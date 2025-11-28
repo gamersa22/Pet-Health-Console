@@ -1,6 +1,6 @@
 --Elder Scrolls: Online addon (written in LUA) which adds persistent in-game health bars to all permanent pets.
 --Original/base work of this addon was developed by SCOOTWORKS and I was granted permission by him to take over full development and distribution of this addon.
-PetHealth                          = PetHealth or {}
+PetHealth = PetHealth or {}
 --The supported classes for this addon (ClassId from function GetUnitClassId("player"))
 PetHealth.supportedClasses         = {
     [1]   = true, -- Dragonknight
@@ -26,10 +26,10 @@ PetHealth.addonData                = addon
 
 local default                      = {
     saveMode                 = 1, -- Default for each character setting
-    point                    = TOPLEFT,
-    relPoint                 = TOPLEFT,
-    x                        = 0,
-    y                        = 0,
+    point                    = 0, -- 0 as we want it to be based off top left
+    relPoint                 = 0, -- ^^^
+    x                        = 15,
+    y                        = 400,--seems like a good spot to avoid group ui
     onlyInCombat             = false,
     showValues               = true,
     showLabels               = true,
@@ -70,7 +70,7 @@ local PetHealthWarner
 local window                       = {}
 PetHealth.window = window
 local inCombatAddon                = false
-
+local lang = GetCVar("language.2") 
 --local AddOnManager                 = GetAddOnManager()
 local hideInDungeon                = false
 local LAM
@@ -89,9 +89,7 @@ local WINDOW_MANAGER               = GetWindowManager()
 local WINDOW_WIDTH                 = 250
 local WINDOW_HEIGHT_PER_PET        = 40 -- Height per pet bar
 local WINDOW_HEIGHT_BASE           = 36 -- Base height for no pets
-PetHealth.PET_BAR_FRAGMENT = nil
-
-local MAX_PETS                     = 7
+PetHealth.PET_BAR_FRAGMENT 		   = nil
 
 ----------
 -- UTIL --
@@ -118,83 +116,83 @@ local function CheckAddon(addonName)
 end
 ]]
 
-local function GetPetNameLower(abilityId)
-    --[[
-    Um die Namen einfacher zu vergleichen, nur Kleinbuchstaben nutzen.
-    Zudem formatiert zo_strformat() den Namen ins richtige Format.
-    ]]
-    local abilityName = GetAbilityName(abilityId)
-    local petName
-    --Removing text from Sorc pet ability names to derive pet names / Not currently needed for Warden pets
-    --Unstable Clannfear is abilityId 23319
-    --if abilityId == 23319 or abilityId == 23304 then
-    if abilityName:match('Summon ') then
-        if abilityName:match('Summon Unstable ') then
-            petName = abilityName:gsub("Summon Unstable ", "")
-        else
-            petName = abilityName:gsub("Summon ", "")
-        end
-    else
-        petName = abilityName
-    end
-    return zo_strformat("<<z:1>>", petName)
-end
-
-local validPets = {
-    --[[
-    Da einige abilityNames nicht mit abilityId übereinstimmt,
-    müssen wir hier ein paar Sachen hardcoden.
-    ]]
-    -- Familiar
-    [GetPetNameLower(23304)]      = true,
-    ["begleiter"]                 = true, -- de
-    ["familier"]                  = true, -- fr
-    ["призванный слуга"]          = true, -- ru
-    -- Clannfear
-    [GetPetNameLower(23319)]      = true,
-    ["clannbann"]                 = true, -- de
-    ["faucheclan"]                = true, -- fr
-    ["кланфир"]                   = true, -- ru
-    -- Volatile Familiar
-    [GetPetNameLower(23316)]      = true, -- en
-    ["explosiver begleiter"]      = true, -- de
-    ["familier explosif"]         = true, -- fr
-    ["взрывной призванный слуга"] = true, -- ru
-    -- Winged Twilight
-    [GetPetNameLower(24613)]      = true, -- en
-    ["zwielichtschwinge"]         = true, -- de
-    ["crépuscule ailé"]           = true, -- fr
-    ["крылатый сумрак"]           = true, -- ru
-    -- Twilight Tormentor
-    [GetPetNameLower(24636)]      = true, -- en
-    ["zwielichtpeinigerin"]       = true, -- de
-    ["tourmenteur crépusculaire"] = true, -- fr
-    ["сумрак-мучитель"]           = true, -- ru
-    -- Twilight Matriarch
-    [GetPetNameLower(24639)]      = true,
-    ["zwielichtmatriarchin"]      = true, -- de
-    ["matriarche crépusculaire"]  = true, -- fr
-    ["сумрак-матриарх"]           = true, -- ru
-    -- Warden Pets don't seem to need any de/fr localization entries
-    -- Feral Guardian
-    [GetPetNameLower(85982)]      = true,
-    ["хищный страж"]              = true, -- ru
-    -- Eternal Guardian
-    [GetPetNameLower(85986)]      = true,
-    ["вечный страж"]              = true, -- ru
-    -- Wild Guardian
-    [GetPetNameLower(85990)]      = true,
-    ["дикий защитник"]            = true, -- ru
+local petNameLang={
+	["fr"]={
+		["gardien éternel"]=true,
+		["gardien sauvage"]=true,
+		["tourmenteur crépusculaire"]=true,
+		["familier"]=true,
+		["matriarche crépusculaire"]=true,
+		["gardien féroce"]=true,
+		["crépuscule ailé"]=true,
+		["familier explosif"]=true,
+		["faucheclan"]=true,
+	},
+	["es"]={
+		["guardián eterno"]=true,
+		["guardián salvaje"]=true,
+		["atormentadora crepuscular"]=true,
+		["familiar"]=true,
+		["matriarca crepuscular"]=true,
+		["clannfear"]=true,
+		["crepúsculo alado"]=true,
+		["familiar volátil"]=true,
+		["guardián feroz"]=true,
+	},
+	["de"]={
+		["ewiger wächter"]=true,
+		["wilder wächter"]=true,
+		["zwielichtpeinigerin"]=true,
+		["begleiter"]=true,
+		["zwielichtmatriarchin"]=true,
+		["ungezähmter wächter"]=true,
+		["zwielichtschwinge"]=true,
+		["explosiver begleiter"]=true,
+		["clannbann"]=true,
+	},
+	["zh"]={
+		["永恒守护者"]=true,
+		["荒野守护者"]=true,
+		["影暮苔魔"]=true,
+		["魔宠"]=true,
+		["影暮女王"]=true,
+		["野蛮守护者"]=true,
+		["影暮翼人"]=true,
+		["暴烈魔宠"]=true,
+		["惊惧兽"]=true,
+	},
+	["ru"]={
+		["вечный страж"]=true,
+		["дикий страж"]=true,
+		["сумрак-мучитель"]=true,
+		["призванный слуга"]=true,
+		["сумрак-матриарх"]=true,
+		["хищный страж"]=true,
+		["крылатый сумрак"]=true,
+		["взрывной призванный слуга"]=true,
+		["кланфир"]=true,
+	},
+	["en"]={
+		["eternal guardian"]=true,
+		["wild guardian"]=true,
+		["twilight tormentor"]=true,
+		["familiar"]=true,
+		["twilight matriarch"]=true,
+		["feral guardian"]=true,
+		["winged twilight"]=true,
+		["volatile familiar"]=true,
+		["clannfear"]=true,
+	},
 }
-
+if not petNameLang[lang] then lang="en" end
 local function IsUnitValidPet(unitTag)
     --[[
     Hier durchsuchen wir die Tabellen oben, ob wir den unitTag wirklich in unsere Tabelle aufnehmen.
+	Here we search the tables above to see if we should really include the unitTag in our table.
     ]]
     local unitName = zo_strformat("<<z:1>>", GetUnitName(unitTag))
     --zo_callLater(function() d(unitName) end, 10000)
-
-    return DoesUnitExist(unitTag) and validPets[unitName]
+    return DoesUnitExist(unitTag) and petNameLang[lang][unitName]
 end
 
 local function GetKeyWithData(unitTag)
@@ -264,7 +262,7 @@ local function RefreshPetWindow()
     local height      = WINDOW_HEIGHT_BASE + (countPets * WINDOW_HEIGHT_PER_PET)
     local setToHidden = true
     if countPets > 0 then
-        for i = 1, MAX_PETS do
+        for i = 1, MAX_PET_UNIT_TAGS do
             local currentPetWindow = window[i]
             if currentPetWindow ~= nil then
                 currentPetWindow:SetHidden(i > countPets and true or false)
@@ -454,7 +452,7 @@ local function GetActivePets()
     Hier werden alle Begleiter des Spielers ausgelesen und in die Begleitertabelle geschrieben.
     ]]
     currentPets = {}
-    for i = 1, MAX_PETS do
+    for i = 1, MAX_PET_UNIT_TAGS do
         local unitTag = UNIT_PLAYER_PET .. i
         if IsUnitValidPet(unitTag) then
             tins(currentPets, { unitTag = unitTag, unitName = zo_strformat("<<z:1>>", GetUnitName(unitTag)) })
@@ -577,7 +575,7 @@ local function CreateControls()
     ---------------
     base = WINDOW_MANAGER:CreateTopLevelWindow(addon.name .. "_TopLevel")
     base:SetDimensions(WINDOW_WIDTH, WINDOW_HEIGHT_BASE)
-    base:SetAnchor(savedVars.point, GuiRoot, savedVars.relPoint, savedVars.x, savedVars.y)
+    base:SetAnchor(default.point, GuiRoot, default.relPoint, savedVars.x, savedVars.y)
    --base:SetMouseEnabled(true)
   --  if savedVars.lockWindow == true then
     --    base:SetMovable(false)
@@ -593,7 +591,7 @@ local function CreateControls()
     base:SetHidden(true)
 	function PetHealth.MovePetWindow()
 		base:ClearAnchors()
-		base:SetAnchor(savedVars.point, GuiRoot, savedVars.relPoint, savedVars.x, savedVars.y)
+		base:SetAnchor(default.point, GuiRoot, default.relPoint, savedVars.x, savedVars.y)
 	end
     ----------------
     -- BACKGROUND --
@@ -617,7 +615,7 @@ local function CreateControls()
     -- PET BARS --
     --------------
     if (not savedVars.useZosStyle) then
-        for i = 1, MAX_PETS do
+        for i = 1, MAX_PET_UNIT_TAGS do
             -- frame
             local currentPetWindow
             currentPetWindow, ctrl = AddControl(base, CT_BACKDROP, 5)
@@ -764,7 +762,7 @@ local function CreateControls()
             end
         end
 
-        for i = 1, MAX_PETS do
+        for i = 1, MAX_PET_UNIT_TAGS do
 
             local currentPetWindow             = WINDOW_MANAGER:CreateControlFromVirtual("PetHealth" .. i, base, "PetHealth_ZOSStyleBar")
             window[i] = currentPetWindow
@@ -984,7 +982,7 @@ function PetHealth.changeBackground(toValue)
 end
 
 function PetHealth.changeValues(toValue)
-    for i = 1, MAX_PETS do
+    for i = 1, MAX_PET_UNIT_TAGS do
         -- local alpha = GetAlphaFromControl(savedVars.showValues)
         -- d(alpha)
         window[i].values:SetAlpha(GetAlphaFromControl(toValue))
@@ -992,7 +990,7 @@ function PetHealth.changeValues(toValue)
 end
 
 function PetHealth.changeLabels(toValue)
-    for i = 1, MAX_PETS do
+    for i = 1, MAX_PET_UNIT_TAGS do
         window[i].label:SetAlpha(GetAlphaFromControl(toValue))
     end
 end
@@ -1036,7 +1034,6 @@ local function SlashCommands()
 	local function slash_pethealthcombat()
 		savedVars.onlyInCombat = not savedVars.onlyInCombat
         if savedVars.onlyInCombat then
-		d("hi")
             d(GetString(SI_PET_HEALTH_COMBAT_ACTIVATED))
         else
             d(GetString(SI_PET_HEALTH_COMBAT_DEACTIVATED))

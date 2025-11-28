@@ -112,7 +112,6 @@ function PetHealth.buildLAMAddonMenu()
 		{
             type = "checkbox",
             name = "Show Pet Window Here",
-           -- tooltip = "",
             getFunc = function() return PetHealthWindowInMenu end,
             setFunc = function(value) 	
 				if PetHealthWindowInMenu == value then return end
@@ -127,8 +126,8 @@ function PetHealth.buildLAMAddonMenu()
         },
 		{
             type = "slider",
-            name = "x position",--GetString(SI_PET_HEALTH_LAM_LOW_SHIELD_WARN),
-            tooltip = "move it left or right",--GetString(SI_PET_HEALTH_LAM_LOW_SHIELD_WARN_TT),
+            name = "Left <- -> Right",
+            tooltip = "move it left or right",
             getFunc = function() return settings.x end,
             setFunc = function(value) 
 				settings.x = value
@@ -146,8 +145,8 @@ function PetHealth.buildLAMAddonMenu()
         },
 		{
             type = "slider",
-            name = "y position",--GetString(SI_PET_HEALTH_LAM_LOW_SHIELD_WARN),
-            tooltip = "move it up or down",--GetString(SI_PET_HEALTH_LAM_LOW_SHIELD_WARN_TT),
+            name = "Up <- -> Down",
+            tooltip = "move it up or down",
             getFunc = function() return settings.y end,
             setFunc = function(value) 
 				settings.y = value
