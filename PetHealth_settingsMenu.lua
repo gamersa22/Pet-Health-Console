@@ -2,9 +2,22 @@
 
 PetHealth = PetHealth or {}
 
+local function updateExcludedZonesForHide()
+    local settings = PetHealth.savedVars
+    if not settings then return end
+
+    local excludedZonesForHide = PetHealth.excludedZonesForHide
+    for _, data in ipairs(settings.excludedZonesForHide) do
+        excludedZonesForHide[data.value] = true
+    end
+    PetHealth.excludedZonesForHide = excludedZonesForHide
+end
+PetHealth.updateExcludedZonesForHide = updateExcludedZonesForHide
+
 function PetHealth.buildLAMAddonMenu()
     local settings = PetHealth.savedVars
     if not PetHealth.LAM or not settings then return false end
+
     local defaults = PetHealth.savedVarsDefault
     local addonVars = PetHealth.addonData
 
@@ -24,6 +37,30 @@ function PetHealth.buildLAMAddonMenu()
         [1] = GetString(SI_PET_HEALTH_EACH_CHAR),
         [2] = GetString(SI_PET_HEALTH_ACCOUNT_WIDE),
     }
+	
+	local PetHealthWindowInMenu = false
+	local scene
+	local maxX, maxY = GuiRoot:GetDimensions()
+	maxX = math.floor(maxX)
+	maxY = math.floor(maxY)
+	--adds it
+	local function addPetHealthWindow()
+		if PetHealthWindowInMenu then return end
+		scene = SCENE_MANAGER:GetCurrentScene()					
+		scene:AddFragment(PetHealth.PET_BAR_FRAGMENT)
+		PetHealth.PET_BAR_FRAGMENT:Refresh()	
+		PetHealthWindowInMenu = true	
+	end
+	--removes it
+	local function addonSelected(_, addonSettings)
+		if PetHealthWindowInMenu then	
+			scene:RemoveFragment(PetHealth.PET_BAR_FRAGMENT)
+			PetHealth.PET_BAR_FRAGMENT:Refresh()
+			PetHealthWindowInMenu = false
+		end
+	end
+	CALLBACK_MANAGER:RegisterCallback("LAM-RefreshPanel", addonSelected)	
+	CALLBACK_MANAGER:RegisterCallback("LibHarvensAddonSettings_AddonSelected", addonSelected)
     --Register the LAM panel and add it to the global PetHealth table
     PetHealth.LAM_SettingsPanel = PetHealth.LAM:RegisterAddonPanel(addonVars.name .. "_LAM", panelData)
     --Create the options table for the LAM controls
@@ -34,13 +71,14 @@ function PetHealth.buildLAMAddonMenu()
             type = 'description',
             text = GetString(SI_PET_HEALTH_DESC),
         },
-        {
+		--drop down be broken
+       --[[{
             type = 'dropdown',
             name = GetString(SI_PET_HEALTH_SAVE_TYPE),
             tooltip = GetString(SI_PET_HEALTH_SAVE_TYPE_TT),
             choices = savedVariablesOptions,
-            getFunc = function() return savedVariablesOptions[PetHealth_Save[GetWorldName()][GetDisplayName()]['$AccountWide']["saveMode"]] end,
-            setFunc = function(value)
+            getFunc = function() return savedVariablesOptions[PetHealth_Save[GetWorldName()][GetDisplayName()]['$AccountWide']["saveMode"]]--[[ end,
+         setFunc = function(value)
                 for i,v in pairs(savedVariablesOptions) do
                     if v == value then
                         PetHealth_Save[GetWorldName()][GetDisplayName()]['$AccountWide']["saveMode"] = i
@@ -48,23 +86,82 @@ function PetHealth.buildLAMAddonMenu()
                 end
             end,
             requiresReload = true,
+        },--]]
+		 {
+            type = "checkbox",
+            name = GetString(SI_PET_HEALTH_SAVE_TYPE).." : "..GetString(SI_PET_HEALTH_EACH_CHAR),
+            tooltip = GetString(SI_PET_HEALTH_SAVE_TYPE_TT),
+            getFunc = function() return savedVariablesOptions[PetHealth_Save[GetWorldName()][GetDisplayName()]['$AccountWide']["saveMode"]] end,
+            setFunc = function(value) 
+				for i,v in pairs(savedVariablesOptions) do
+                    if v == value then
+                        PetHealth_Save[GetWorldName()][GetDisplayName()]['$AccountWide']["saveMode"] = i
+                    end
+                end
+            end,
+            width="full",
+            requiresReload = true,
         },
+
+	
         --==============================================================================
         {
             type = 'header',
             name = GetString(SI_PET_HEALTH_LAM_HEADER_VISUAL),
         },
-        {
+		{
             type = "checkbox",
-            name = GetString(SI_PET_HEALTH_LAM_LOCK_WINDOW),
-            tooltip = GetString(SI_PET_HEALTH_LAM_LOCK_WINDOW_TT),
-            getFunc = function() return settings.lockWindow end,
-            setFunc = function(value) settings.lockWindow = value
-                PetHealth.lockPetWindow(value)
+            name = "Show Pet Window Here",
+           -- tooltip = "",
+            getFunc = function() return PetHealthWindowInMenu end,
+            setFunc = function(value) 	
+				if PetHealthWindowInMenu == value then return end
+				if not PetHealthWindowInMenu then
+					addPetHealthWindow()
+				else
+					addonSelected()
+				end			
             end,
-            default = defaults.lockWindow,
             width="full",
-            requiresReload = true,
+			default = false,
+        },
+		{
+            type = "slider",
+            name = "x position",--GetString(SI_PET_HEALTH_LAM_LOW_SHIELD_WARN),
+            tooltip = "move it left or right",--GetString(SI_PET_HEALTH_LAM_LOW_SHIELD_WARN_TT),
+            getFunc = function() return settings.x end,
+            setFunc = function(value) 
+				settings.x = value
+               PetHealth.MovePetWindow()
+            end,
+            min = 0,
+            max = maxX,
+            step = 5,
+            clampInput = true,
+            decimals = 0,
+            autoSelect = false,
+            inputLocation = "right",
+            width = "full",
+            default = defaults.x,
+        },
+		{
+            type = "slider",
+            name = "y position",--GetString(SI_PET_HEALTH_LAM_LOW_SHIELD_WARN),
+            tooltip = "move it up or down",--GetString(SI_PET_HEALTH_LAM_LOW_SHIELD_WARN_TT),
+            getFunc = function() return settings.y end,
+            setFunc = function(value) 
+				settings.y = value
+               PetHealth.MovePetWindow()
+            end,
+            min = 0,
+            max = maxY,
+            step = 5,
+            clampInput = true,
+            decimals = 0,
+            autoSelect = false,
+            inputLocation = "right",
+            width = "full",
+            default = defaults.y,
         },
         {
             type = "checkbox",
@@ -116,54 +213,62 @@ function PetHealth.buildLAMAddonMenu()
             name = GetString(SI_PET_HEALTH_LAM_USE_ZOS_STYLE),
             tooltip = GetString(SI_PET_HEALTH_LAM_USE_ZOS_STYLE_TT),
             getFunc = function() return settings.useZosStyle end,
-            setFunc = function(value) settings.useZosStyle = value
-                if value == true then
-                    settings.showBackground = false
-                    PetHealth.changeBackground(false)
-                else
-                    settings.showBackground = true
-                    PetHealth.changeBackground(true)
-                end
+            setFunc = function(value) 
+				settings.useZosStyle = value
+                settings.showBackground = not value
+                PetHealth.changeBackground(not value)
+				ReloadUI()
             end,
             width = "full",
-            requiresReload = true,
+           requiresReload = true,
         },
         {
-		    type = "slider",
-		    name = GetString(SI_PET_HEALTH_LAM_LOW_HEALTH_WARN),
+            type = "slider",
+            name = GetString(SI_PET_HEALTH_LAM_LOW_HEALTH_WARN),
             tooltip = GetString(SI_PET_HEALTH_LAM_LOW_HEALTH_WARN_TT),
-		    getFunc = function() return settings.lowHealthAlertSlider end,
-		    setFunc = function(value) settings.lowHealthAlertSlider = value 
-		    	PetHealth.lowHealthAlertPercentage(value) 
-		    end,
-		    min = 0,
-		    max = 99,
-		    step = 1,
-		    clampInput = true, 
-		   	decimals = 0,
-		    autoSelect = false, 
-		    inputLocation = "right",
-		    width = "full",
-		    default = defaults.lowHealthAlertSlider,
-		},
-		{
-		    type = "slider",
+            getFunc = function() return settings.lowHealthAlertSlider end,
+            setFunc = function(value) settings.lowHealthAlertSlider = value
+                PetHealth.lowHealthAlertPercentage(value)
+            end,
+            min = 0,
+            max = 99,
+            step = 1,
+            clampInput = true,
+            decimals = 0,
+            autoSelect = false,
+            inputLocation = "right",
+            width = "full",
+            default = defaults.lowHealthAlertSlider,
+        },
+        {
+            type = "slider",
             name = GetString(SI_PET_HEALTH_LAM_LOW_SHIELD_WARN),
             tooltip = GetString(SI_PET_HEALTH_LAM_LOW_SHIELD_WARN_TT),
-		    getFunc = function() return settings.lowShieldAlertSlider end,
-		    setFunc = function(value) settings.lowShieldAlertSlider = value 
-		    	PetHealth.lowShieldAlertPercentage(value) 
-		    end,
-		    min = 0,
-		    max = 99,
-		    step = 1,
-		    clampInput = true, 
-		   	decimals = 0,
-		    autoSelect = false, 
-		    inputLocation = "right",
-		    width = "full",
-		    default = defaults.lowShieldAlertSlider,
-		},
+            getFunc = function() return settings.lowShieldAlertSlider end,
+            setFunc = function(value) settings.lowShieldAlertSlider = value
+                PetHealth.lowShieldAlertPercentage(value)
+            end,
+            min = 0,
+            max = 99,
+            step = 1,
+            clampInput = true,
+            decimals = 0,
+            autoSelect = false,
+            inputLocation = "right",
+            width = "full",
+            default = defaults.lowShieldAlertSlider,
+        },
+        {
+            type = "checkbox",
+            name = GetString(SI_PET_HEALTH_LAM_COMPANION),
+            tooltip = GetString(SI_PET_HEALTH_LAM_COMPANION_TT),
+            getFunc = function() return settings.showCompanion end,
+            setFunc = function(value) settings.showCompanion = value
+                PetHealth.changeCompanion(value)
+            end,
+            default = defaults.showCompanion,
+            width="full",
+        },
         --==============================================================================
         {
             type = 'header',
@@ -196,22 +301,65 @@ function PetHealth.buildLAMAddonMenu()
             name = GetString(SI_PET_HEALTH_LAM_ONLY_IN_COMBAT_HEALTH),
             tooltip = GetString(SI_PET_HEALTH_LAM_ONLY_IN_COMBAT_HEALTH_TT),
             getFunc = function() return settings.onlyInCombatHealthSlider end,
-            setFunc = function(value) settings.onlyInCombatHealthSlider = value 
-                PetHealth.onlyInCombatHealthPercentage(value) 
+            setFunc = function(value) settings.onlyInCombatHealthSlider = value
+                PetHealth.onlyInCombatHealthPercentage(value)
             end,
             min = 0,
             max = 99,
             step = 1,
-            clampInput = true, 
+            clampInput = true,
             decimals = 0,
-            autoSelect = false, 
+            autoSelect = false,
             inputLocation = "right",
             width = "full",
             default = defaults.onlyInCombatHealthSlider,
-        },
+        },   
     } -- optionsTable
-    -- END OF OPTIONS TABLE
-
-    --Create the LAM panel now
+    -- Optional suport for LibAddonMenuOrderListBox
+	if LibAddonMenuOrderListBox then
+		table.insert(optionsTable, {
+            type                 = "orderlistbox",
+            name                 = GetString(SI_PET_HEALTH_LAM_EXCLUDED_ZONEIDS),
+            tooltip              = GetString(SI_PET_HEALTH_LAM_EXCLUDED_ZONEIDS_TT),
+            listEntries          = settings.excludedZonesForHide,
+            getFunc              = function() return settings.excludedZonesForHide end,
+            setFunc              = function(currentSortedListEntries)
+                settings.excludedZonesForHide = currentSortedListEntries
+                updateExcludedZonesForHide()
+            end,
+            width                = "full", -- or "half" (optional)
+            isExtraWide          = false, -- or function returning a boolean (optional). Show the listBox as extra wide box
+            minHeight            = 200,
+            maxHeight            = 500,
+            rowHeight            = 25,
+            --rowSelectedCallback  = function() doStuffOnSelection(rowControl, previouslySelectedData, selectedData, reselectingDuringRebuild) end, --An optional callback function when a row of the listEntries got selected (optional)
+            --rowHideCallback = function() doStuffOnHide(rowControl, currentRowData) end, --An optional callback function when a row of the listEntries got hidden (optional)
+            disableDrag = false, -- or function returning a boolean (optional). Disable the drag&drop of the rows
+            disableButtons = false, -- or function returning a boolean (optional). Disable the move up/move down/move to top/move to bottom buttons
+            showPosition = false, -- or function returning a boolean (optional). Show the position number in front of the list entry
+            showValue = false, -- or function returning a boolean (optional). Show the value of the entry after the list entry text, surrounded by []
+            showValueAtTooltip = false, -- or function returning a boolean (optional). Show the value of the entry after the tooltip text, surrounded by []
+            addEntryDialog = { title = "Add new zoneId", text = "Enter new zoneId here", textType = TEXT_TYPE_NUMERIC, buttonTexture = "", maxInputCharacters = 5, selectAll = false, defaultText = "Type zoneId here" },
+            addEntryCallbackFunction = function(orderListBox, newAddedEntry, orderListBoxData)
+                updateExcludedZonesForHide()
+                return true
+            end,
+            showRemoveEntryButton = true, -- or function returning a boolean (optional). Show a button to remove the currently selected entry
+            askBeforeRemoveEntry = false, -- or function returning a boolean (optional). If showRemoveEntryButton is enabled: Ask via a dialog if the entry should be removed
+            --removeEntryCheckFunction = function (orderListBox, selectedIndex, orderListBoxData) return true end, -- (optional) function returning a boolean (true = remove, false = keep) if the entry can be removed or not
+            removeEntryCallbackFunction = function(orderListBox, selectedEntry, orderListBoxData)
+                updateExcludedZonesForHide()
+                return true
+            end, -- (optional) function returning a boolean (true = removed, false = not removed) called as the entry get's removed,
+            --disabled = function () return false end, -- or boolean (optional)
+            --warning = "May cause permanent awesomeness.", -- or string id or function returning a string (optional)
+            --requiresReload = false, -- boolean, if set to true, the warning text will contain a notice that changes are only applied after an UI reload and any change to the value will make the "Apply Settings" button appear on the panel which will reload the UI when pressed (optional)
+            default = defaults.excludedZonesForHide, -- default value or function that returns the default value (optional)
+            --helpUrl = "https://www.esoui.com/portal.php?id=218&a=faq", -- a string URL or a function that returns the string URL (optional)
+            --reference = "MyAddonOrderListBox" -- function returning String, or String unique global reference to control (optional)
+        })
+	end   
+	-- END OF OPTIONS TABLE
+	--Create the LAM panel now
     PetHealth.LAM:RegisterOptionControls(addonVars.name .. "_LAM", optionsTable)
 end
