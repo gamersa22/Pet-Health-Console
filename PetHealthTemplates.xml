@@ -6,20 +6,20 @@
                 <Control name="$(parent)BgContainer" inherits="ZO_PlayerAttributeBgContainer">
                     <Anchor point="CENTER" />
                     <Controls>
-                        <Texture name="$(parent)BgLeft" inherits="ZO_PlayerAttributeBgLeftArrow" />
-                        <Texture name="$(parent)BgRight" inherits="ZO_PlayerAttributeBgRightArrow" />
-                        <Texture name="$(parent)BgCenter" inherits="ZO_PlayerAttributeBgCenter" />
+                        <Texture name="$(parent)BgLeft" level="20" inherits="ZO_PlayerAttributeBgLeftArrow" />
+                        <Texture name="$(parent)BgRight" level="20"  inherits="ZO_PlayerAttributeBgRightArrow" />
+                        <Texture name="$(parent)BgCenter" level="20"  inherits="ZO_PlayerAttributeBgCenter" />
                     </Controls>
                 </Control>
                 
-                <StatusBar name="$(parent)BarLeft" inherits="ZO_PlayerAttributeStatusBar" barAlignment="REVERSE">
+                <StatusBar name="$(parent)BarLeft" level="30" inherits="ZO_PlayerAttributeStatusBar" barAlignment="REVERSE">
                     <Anchor point="LEFT" />
                     <Anchor point="RIGHT" relativePoint="CENTER" />
                     <Controls>
                         <StatusBar name="$(parent)Gloss" inherits="ZO_PlayerAttributeStatusBarGloss" barAlignment="REVERSE" />
                     </Controls>
                 </StatusBar>
-                <StatusBar name="$(parent)BarRight" inherits="ZO_PlayerAttributeStatusBar">
+                <StatusBar name="$(parent)BarRight" level="30" inherits="ZO_PlayerAttributeStatusBar">
                     <Anchor point="RIGHT" />
                     <Anchor point="LEFT" relativePoint="CENTER" />
                     <Controls>
@@ -54,7 +54,7 @@
                     </Controls>
 	            </StatusBar>
 
-                <Label name="$(parent)ResourceNumbers" inherits="ZO_PlayerAttributeBarText" />
+                <Label name="$(parent)ResourceNumbers" level="50" inherits="ZO_PlayerAttributeBarText" />
             </Controls>
         </Control>
     </Controls>
