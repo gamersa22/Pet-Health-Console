@@ -1,6 +1,6 @@
 --Elder Scrolls: Online addon (written in LUA) which adds persistent in-game health bars to all permanent pets.
 --Original/base work of this addon was developed by SCOOTWORKS and I was granted permission by him to take over full development and distribution of this addon.
-PetHealth                          = PetHealth or {}
+PetHealth = PetHealth or {}
 --The supported classes for this addon (ClassId from function GetUnitClassId("player"))
 PetHealth.supportedClasses         = {
     [1]   = true, -- Dragonknight
@@ -18,25 +18,26 @@ local addon                        = {
     version         = "1.14",
     savedVarName    = "PetHealth_Save",
     savedVarVersion = 2,
-    lamDisplayName  = "PetHealth",
-    lamAuthor       = "Scootworks, Goobsnake, Baertram",
-    lamUrl          = "https://www.esoui.com/downloads/info1884-PetHealth.html",
+    lhasDisplayName  = "PetHealth",
+    lhasAuthor       = "Scootworks, Goobsnake, Baertram",
+    lhasUrl          = "https://www.esoui.com/downloads/info1884-PetHealth.html",
 }
 PetHealth.addonData                = addon
 
 local default                      = {
     saveMode                 = 1, -- Default for each character setting
-    point                    = TOPLEFT,
-    relPoint                 = CENTER,
-    x                        = 0,
-    y                        = 0,
+    point                    = 0, -- 0 as we want it to be based off top left
+    relPoint                 = 0, -- ^^^
+    x                        = 15,
+    y                        = 400,--seems like a good spot to avoid group ui
     onlyInCombat             = false,
     showValues               = true,
     showLabels               = true,
     hideInDungeon            = false,
-    lockWindow               = false,
     lowHealthAlertSlider     = 0,
     lowShieldAlertSlider     = 0,
+	lowHealthAlertColor		 = "ff0000", --HexVaule
+	lowShieldAlertColor		 = "0050c0", 
     petUnsummonedAlerts      = false,
     onlyInCombatHealthSlider = 0,
     showBackground           = true,
@@ -69,14 +70,14 @@ PetHealth.currentPets = currentPets
 local PetHealthWarner
 local window                       = {}
 PetHealth.window = window
+local windowZos                       = {}
+PetHealth.windowZos = windowZos
 local inCombatAddon                = false
 local lang = GetCVar("language.2") 
-
 --local AddOnManager                 = GetAddOnManager()
 local hideInDungeon                = false
-local LAM
+local LHAS
 local LSC
-local lockWindow                   = false
 local lowHealthAlertPercentage     = 0
 local lowShieldAlertPercentage     = 0
 local onlyInCombatHealthMax        = 0
@@ -90,8 +91,8 @@ local WINDOW_MANAGER               = GetWindowManager()
 local WINDOW_WIDTH                 = 250
 local WINDOW_HEIGHT_PER_PET        = 40 -- Height per pet bar
 local WINDOW_HEIGHT_BASE           = 36 -- Base height for no pets
-local PET_BAR_FRAGMENT
-
+PetHealth.PET_BAR_FRAGMENT 		   = nil
+local getingPetATM = false
 ----------
 -- UTIL --
 ----------
@@ -102,23 +103,12 @@ local function OnScreenMessage(message)
     CENTER_SCREEN_ANNOUNCE:AddMessageWithParams(messageParams)
 end
 
-local function ChatOutput(message)
-    CHAT_SYSTEM:AddMessage(message)
+
+local function GetCurrentWidow(i)
+	if  savedVars.useZosStyle then return windowZos[i] else return window[i] end
 end
 
---[[
-local function CheckAddon(addonName)
-    for i = 1, AddOnManager:GetNumAddOns() do
-        local name, title, author, description, enabled, state, isOutOfDate = AddOnManager:GetAddOnInfo(i)
-        if title == addonName and enabled == true and state == 2 then
-            return true
-        end
-    end
-end
-]]
-
-
-local validPets = {
+local petNameLang={
 	["fr"]={
 		["gardien éternel"]=true,
 		["gardien sauvage"]=true,
@@ -190,11 +180,11 @@ if not petNameLang[lang] then lang="en" end
 local function IsUnitValidPet(unitTag)
     --[[
     Hier durchsuchen wir die Tabellen oben, ob wir den unitTag wirklich in unsere Tabelle aufnehmen.
+	Here we search the tables above to see if we should really include the unitTag in our table.
     ]]
     local unitName = zo_strformat("<<z:1>>", GetUnitName(unitTag))
-    --zo_callLater(function() ChatOutput(unitName) end, 10000)
-
-    return DoesUnitExist(unitTag) and validPets[lang][unitName]
+    --zo_callLater(function() d(unitName) end, 10000)
+    return DoesUnitExist(unitTag) and petNameLang[lang][unitName]
 end
 
 local function GetKeyWithData(unitTag)
@@ -217,9 +207,9 @@ local function SetPetWindowHidden(hidden, combatState)
     if combatState then
         setToHidden = true
     end
-    PET_BAR_FRAGMENT:SetHiddenForReason("NoPetOrOnlyInCombat", setToHidden)
+    PetHealth.PET_BAR_FRAGMENT:SetHiddenForReason("NoPetOrOnlyInCombat", setToHidden)
     -- debug
-    --ChatOutput(string.format("SetPetWindowHidden() setToHidden: %s, onlyInCombat: %s", tos(setToHidden), tos(onlyInCombat)))
+    --d(string.format("SetPetWindowHidden() setToHidden: %s, onlyInCombat: %s", tos(setToHidden), tos(onlyInCombat)))
 end
 
 local function PetUnSummonedAlerts(unitTag)
@@ -251,13 +241,9 @@ local function GetTableSize(tbl)
 end
 
 local function RefreshPetWindow()
-    --GetSlotBoundId values 3 thru 8 to obtain the slotbar's abiltiyId's (8 is ultimate)
-    -- d(GetSlotBoundId(3))
-    -- d(GetPetNameLower(GetSlotBoundId(3)))
-    -- d(GetAbilityName(23319))
     local countPets   = GetTableSize(currentPets)
     local combatState = GetCombatState()
-    if PET_BAR_FRAGMENT:IsHidden() and countPets == 0 and combatState then
+    if PetHealth.PET_BAR_FRAGMENT:IsHidden() and countPets == 0 and combatState then
         return
     end
 
@@ -265,7 +251,7 @@ local function RefreshPetWindow()
     local setToHidden = true
     if countPets > 0 then
         for i = 1, MAX_PET_UNIT_TAGS do
-            local currentPetWindow = window[i]
+            local currentPetWindow = GetCurrentWidow(i)
             if currentPetWindow ~= nil then
                 currentPetWindow:SetHidden(i > countPets and true or false)
             end
@@ -296,7 +282,7 @@ local function RefreshPetWindow()
     -- set hidden state
     SetPetWindowHidden(setToHidden, combatState)
     -- debug
-    --ChatOutput(string.format("RefreshPetWindow() countPets: %d", countPets))
+    --d(string.format("RefreshPetWindow() countPets: %d", countPets))
 end
 
 ------------
@@ -312,14 +298,14 @@ local function OnShieldUpdate(handler, unitTag, value, maxValue, initial, doDebu
     local petName = currentPets[i].unitName
     if lowShieldAlertPercentage > 1 and value ~= 0 and value < (maxValue * .01 * lowShieldAlertPercentage) then
         if not onScreenShieldAlerts then
-            OnScreenMessage(zo_strformat("|c000099<<1>>\'s <<2>>|r", petName, GetString(SI_PET_HEALTH_LOW_SHIELD_WARNING_MSG)))
+            OnScreenMessage(zo_strformat("|c"..savedVars.lowShieldAlertColor.."<<1>>\'s <<2>>|r", petName, GetString(SI_PET_HEALTH_LOW_SHIELD_WARNING_MSG)))
             onScreenShieldAlerts = true
         end
     else
         onScreenShieldAlerts = false
     end
 
-    local currentPetWindow = window[i]
+    local currentPetWindow = GetCurrentWidow(i)
     if currentPetWindow == nil then return end
 
     local ctrl, ctrlr
@@ -345,20 +331,29 @@ local function OnShieldUpdate(handler, unitTag, value, maxValue, initial, doDebu
         end
     end
     if maxValue > 0 then
+		getingPetATM = false 
         if doDebug then d("[PetHealth]OnShieldUpdate - unitTag: " .. tos(unitTag) ..", value: " .. tos(value) ..", maxValue: " .. tos(maxValue)) end
         if savedVars.useZosStyle then
-            value    = value / 2
-            maxValue = maxValue / 2
+            value    = value /2
+            maxValue = maxValue/2
             ZO_StatusBar_SmoothTransition(currentPetWindow.shieldleft, value, maxValue, (initial == "true" and true or false))
-            ZO_StatusBar_SmoothTransition(currentPetWindow.shieldright, value, maxValue, (initial == "true" and true or false))
+			ZO_StatusBar_SmoothTransition(currentPetWindow.shieldright, value, maxValue, (initial == "true" and true or false))
         else
             ZO_StatusBar_SmoothTransition(currentPetWindow.shield, value, maxValue, (initial == "true" and true or false))
         end
+	else	
+		if savedVars.useZosStyle then
+			currentPetWindow.shieldleft:SetValue(0)
+			currentPetWindow.shieldright:SetValue(0)
+		else 
+			currentPetWindow.shield:SetValue(0)
+		end
     end
+	
 end
 
 local function GetShield(unitTag, doDebug)
-    local value, maxValue = GetUnitAttributeVisualizerEffectInfo(unitTag, ATTRIBUTE_VISUAL_POWER_SHIELDING, STAT_MITIGATION, ATTRIBUTE_HEALTH, POWERTYPE_HEALTH)
+    local value, maxValue = GetUnitAttributeVisualizerEffectInfo(unitTag, ATTRIBUTE_VISUAL_POWER_SHIELDING, STAT_MITIGATION, ATTRIBUTE_HEALTH, COMBAT_MECHANIC_FLAGS_HEALTH)
     if value == nil then
         value    = 0
         maxValue = 0
@@ -382,14 +377,15 @@ local function OnHealthUpdate(_, unitTag, _, _, powerValue, powerMax, initial, d
         if doDebug then d("<[ERROR]OnHealthUpdate - i is nil") end
         return
     end
-    local currentPetWindow = window[i]
+    local currentPetWindow = GetCurrentWidow(i)
     if currentPetWindow == nil then return end
 
     local petName = currentPets[i].unitName
     if lowHealthAlertPercentage > 1 and powerValue ~= 0 and powerValue < (powerMax * .01 * lowHealthAlertPercentage) then
         if not onScreenHealthAlerts then
-            OnScreenMessage(zo_strformat("|cff0000<<1>> <<2>>|r", petName, GetString(SI_PET_HEALTH_LOW_HEALTH_WARNING_MSG)))
+            OnScreenMessage(zo_strformat("|c"..savedVars.lowHealthAlertColor.."<<1>> <<2>>|r", petName, GetString(SI_PET_HEALTH_LOW_HEALTH_WARNING_MSG)))
             onScreenHealthAlerts = true
+
         end
     else
         onScreenHealthAlerts = false
@@ -409,7 +405,7 @@ local function OnHealthUpdate(_, unitTag, _, _, powerValue, powerMax, initial, d
 end
 
 local function GetHealth(unitTag, doDebug)
-    local powerValue, powerMax = GetUnitPower(unitTag, POWERTYPE_HEALTH)
+    local powerValue, powerMax = GetUnitPower(unitTag, COMBAT_MECHANIC_FLAGS_HEALTH)
     if doDebug then d("[PetHealth]GetHealth - health: " ..tos(powerValue) .. "/" .. tos(powerMax)) end
     OnHealthUpdate(_, unitTag, _, _, powerValue, powerMax, "true", doDebug)
 end
@@ -438,20 +434,21 @@ local function UpdatePetStats(unitTag)
     end
 
     local name    = currentPets[i].unitName
-    local control = window[i].label
+    local control = GetCurrentWidow(i).label
     if GetControlText(control) ~= name then
         control:SetText(name)
     end
     GetHealth(unitTag, doDebug)
     GetShield(unitTag, doDebug)
     -- debug
-    --ChatOutput(string.format("UpdatePetStats() unitTag: %s, name: %s", unitTag, name))
+    --d(string.format("UpdatePetStats() unitTag: %s, name: %s", unitTag, name))
 end
 
 local function GetActivePets()
     --[[
     Hier werden alle Begleiter des Spielers ausgelesen und in die Begleitertabelle geschrieben.
     ]]
+
     currentPets = {}
     for i = 1, MAX_PET_UNIT_TAGS do
         local unitTag = UNIT_PLAYER_PET .. i
@@ -465,7 +462,7 @@ local function GetActivePets()
         tins(currentPets, { unitTag = UNIT_COMPANION, unitName = zo_strformat("<<1>>", GetCompanionName(GetActiveCompanionDefId())) })
         UpdatePetStats(UNIT_COMPANION)
     end
-
+	--d("Pets Updated")
     -- update
     zo_callLater(function() RefreshPetWindow() end, 300)
 end
@@ -480,13 +477,13 @@ local function OnPlayerCombatState(_, inCombat)
 
     inCombatAddon = inCombat
     -- debug
-    --ChatOutput(string.format("OnPlayerCombatState() inCombat: %s, inCombatAddon: %s", tos(inCombat), tos(inCombatAddon)))
+    --d(string.format("OnPlayerCombatState() inCombat: %s, inCombatAddon: %s", tos(inCombat), tos(inCombatAddon)))
     -- refresh
     RefreshPetWindow()
 end
 
 local function CreateWarner()
-    if savedVars.useZosStyle then
+   -- if savedVars.useZosStyle then
         local HEALTH_ALPHA_PULSE_THRESHOLD = 0.25
 
         local RESOURCE_WARNER_FLASH_TIME   = 300
@@ -506,7 +503,7 @@ local function CreateWarner()
                 self:OnHealthUpdate(health, maxHealth)
             end
             local function OnPlayerActivated()
-                local current, max = GetUnitPower(self.unitTag, POWERTYPE_HEALTH)
+                local current, max = GetUnitPower(self.unitTag, COMBAT_MECHANIC_FLAGS_HEALTH)
                 self:OnHealthUpdate(current, max)
             end
 
@@ -525,7 +522,7 @@ local function CreateWarner()
                         self.warnAnimation:Stop()
                     end
                 else
-                    local current, max = GetUnitPower(UNIT_PLAYER_TAG, POWERTYPE_HEALTH)
+                    local current, max = GetUnitPower(UNIT_PLAYER_TAG, COMBAT_MECHANIC_FLAGS_HEALTH)
                     self.warning:SetAlpha(0)
                     self:UpdateAlphaPulse(current / max)
                 end
@@ -551,7 +548,7 @@ local function CreateWarner()
                 self:UpdateAlphaPulse(healthPerc)
             end
         end
-    end
+  --  end
 end
 
 --------------
@@ -576,21 +573,14 @@ local function CreateControls()
     ---------------
     base = WINDOW_MANAGER:CreateTopLevelWindow(addon.name .. "_TopLevel")
     base:SetDimensions(WINDOW_WIDTH, WINDOW_HEIGHT_BASE)
-    base:SetAnchor(savedVars.point, GuiRoot, savedVars.relPoint, savedVars.x, savedVars.y)
-    base:SetMouseEnabled(true)
-    if savedVars.lockWindow == true then
-        base:SetMovable(false)
-    else
-        base:SetMovable(true)
-    end
+    base:SetAnchor(default.point, GuiRoot, default.relPoint, savedVars.x, savedVars.y)
     base:SetDrawLayer(DL_OVERLAY)
     base:SetDrawLevel(0)
-    base:SetHandler("OnMouseUp", function()
-        local a, b
-        a, savedVars.point, b, savedVars.relPoint, savedVars.x, savedVars.y = base:GetAnchor(0)
-    end)
     base:SetHidden(true)
-
+	function PetHealth.MovePetWindow()
+		base:ClearAnchors()
+		base:SetAnchor(default.point, GuiRoot, default.relPoint, savedVars.x, savedVars.y)
+	end
     ----------------
     -- BACKGROUND --
     ----------------
@@ -612,210 +602,217 @@ local function CreateControls()
     --------------
     -- PET BARS --
     --------------
-    if (not savedVars.useZosStyle) then
-        for i = 1, MAX_PET_UNIT_TAGS do
-            -- frame
-            local currentPetWindow
-            currentPetWindow, ctrl = AddControl(base, CT_BACKDROP, 5)
-            window[i] = currentPetWindow
-            ctrl:SetDimensions(baseWidth * 0.8, 36)
-            ctrl:SetCenterColor(1, 0, 1, 0)
-            ctrl:SetEdgeColor(1, 0, 1, 0)
-            ctrl:SetAnchor(CENTER, base)
+	function PetHealth.createNormalFrames()
+		for i = 1, MAX_PET_UNIT_TAGS do
+			-- frame
+			local currentPetWindow
+			currentPetWindow, ctrl = AddControl(base, CT_BACKDROP, 5)
+			window[i] = currentPetWindow
+			ctrl:SetDimensions(baseWidth * 0.8, 36)
+			ctrl:SetCenterColor(1, 0, 1, 0)
+			ctrl:SetEdgeColor(1, 0, 1, 0)
+			ctrl:SetAnchor(CENTER, base)
 
-            -- label
-            local windowHeight    = currentPetWindow:GetHeight()
-            currentPetWindow.label, ctrl = AddControl(currentPetWindow, CT_LABEL, 10)
-            ctrl:SetFont("$(BOLD_FONT)|$(KB_16)|soft-shadow-thin")
-            ctrl:SetColor(GetInterfaceColor(INTERFACE_COLOR_TYPE_TEXT_COLORS, INTERFACE_TEXT_COLOR_NORMAL))
-            ctrl:SetDimensions(baseWidth, windowHeight * 0.4)
-            ctrl:SetAnchor(TOPLEFT, currentPetWindow)
-            ctrl:SetAlpha(GetAlphaFromControl(savedVars.showLabels))
+			-- label
+			local windowHeight    = currentPetWindow:GetHeight()
+			currentPetWindow.label, ctrl = AddControl(currentPetWindow, CT_LABEL, 10)
+			ctrl:SetFont("$(BOLD_FONT)|$(KB_16)|soft-shadow-thin")
+			ctrl:SetColor(GetInterfaceColor(INTERFACE_COLOR_TYPE_TEXT_COLORS, INTERFACE_TEXT_COLOR_NORMAL))
+			ctrl:SetDimensions(baseWidth, windowHeight * 0.4)
+			ctrl:SetAnchor(TOPLEFT, currentPetWindow)
+			ctrl:SetAlpha(GetAlphaFromControl(savedVars.showLabels))
 
-            -- border and background
-            currentPetWindow.border, ctrl = AddControl(currentPetWindow, CT_BACKDROP, 20)
-            ctrl:SetDimensions(currentPetWindow:GetWidth(), windowHeight * 0.45)
-            ctrl:SetCenterColor(0, 0, 0, .6)
-            ctrl:SetEdgeColor(1, 1, 1, 0.4)
-            ctrl:SetEdgeTexture("", 1, 1, 1)
-            ctrl:SetAnchor(BOTTOM, currentPetWindow)
+			-- border and background
+			currentPetWindow.border, ctrl = AddControl(currentPetWindow, CT_BACKDROP, 20)
+			ctrl:SetDimensions(currentPetWindow:GetWidth(), windowHeight * 0.45)
+			ctrl:SetCenterColor(0, 0, 0, .6)
+			ctrl:SetEdgeColor(1, 1, 1, 0.4)
+			ctrl:SetEdgeTexture("", 1, 1, 1)
+			ctrl:SetAnchor(BOTTOM, currentPetWindow)
 
-            -- healthbar
-            local borderWidth         = currentPetWindow.border:GetWidth()
-            local borderHeight        = currentPetWindow.border:GetHeight()
-            currentPetWindow.healthbar, ctrl = AddControl(currentPetWindow.border, CT_STATUSBAR, 30)
-            ctrl:SetColor(1, 1, 1, 0.5)
-            ctrl:SetGradientColors(.45, .13, .13, 1, .85, .19, .19, 1)
-            ctrl:SetDimensions(borderWidth - 2, borderHeight - 2)
-            ctrl:SetAnchor(CENTER, currentPetWindow.border)
+			-- healthbar
+			local borderWidth         = currentPetWindow.border:GetWidth()
+			local borderHeight        = currentPetWindow.border:GetHeight()
+			currentPetWindow.healthbar, ctrl = AddControl(currentPetWindow.border, CT_STATUSBAR, 30)
+			ctrl:SetColor(1, 1, 1, 0.5)
+			ctrl:SetGradientColors(.45, .13, .13, 1, .85, .19, .19, 1)
+			ctrl:SetDimensions(borderWidth - 2, borderHeight - 2)
+			ctrl:SetAnchor(CENTER, currentPetWindow.border)
 
-            -- shield
-            currentPetWindow.shield, ctrl = AddControl(currentPetWindow.healthbar, CT_STATUSBAR, 40)
-            ctrl:SetColor(1, 1, 1, 0.5)
-            ctrl:SetGradientColors(.5, .5, 1, .3, .25, .25, .5, .5)
-            ctrl:SetDimensions(borderWidth - 2, borderHeight - 2)
-            ctrl:SetAnchor(CENTER, currentPetWindow.healthbar)
-            ctrl:SetValue(0)
-            ctrl:SetMinMax(0, 1)
+			-- shield
+			currentPetWindow.shield, ctrl = AddControl(currentPetWindow.healthbar, CT_STATUSBAR, 40)
+			ctrl:SetColor(1, 1, 1, 0.5)
+			ctrl:SetGradientColors(.5, .5, 1, .3, .25, .25, .5, .5)
+			ctrl:SetDimensions(borderWidth - 2, borderHeight - 2)
+			ctrl:SetAnchor(CENTER, currentPetWindow.healthbar)
+			ctrl:SetValue(0)
+			ctrl:SetMinMax(0, 1)
 
-            -- values
-            currentPetWindow.values, ctrl = AddControl(currentPetWindow.healthbar, CT_LABEL, 50)
-            ctrl:SetFont("$(BOLD_FONT)|$(KB_14)|soft-shadow-thin")
-            ctrl:SetColor(GetInterfaceColor(INTERFACE_COLOR_TYPE_TEXT_COLORS, INTERFACE_TEXT_COLOR_SELECTED))
-            ctrl:SetAnchor(CENTER, currentPetWindow.healthbar)
-            ctrl:SetAlpha(GetAlphaFromControl(savedVars.showValues))
-            -- ctrl:SetHidden(not savedVars.showValues or false)
+			-- values
+			currentPetWindow.values, ctrl = AddControl(currentPetWindow.healthbar, CT_LABEL, 50)
+			ctrl:SetFont("$(BOLD_FONT)|$(KB_14)|soft-shadow-thin")
+			ctrl:SetColor(GetInterfaceColor(INTERFACE_COLOR_TYPE_TEXT_COLORS, INTERFACE_TEXT_COLOR_SELECTED))
+			ctrl:SetAnchor(CENTER, currentPetWindow.healthbar)
+			ctrl:SetAlpha(GetAlphaFromControl(savedVars.showValues))
+			-- ctrl:SetHidden(not savedVars.showValues or false)
 
-            -- clear anchors to reset it
-            currentPetWindow:ClearAnchors()
-            if i == 1 then
-                currentPetWindow:SetAnchor(TOP, base, TOP, 0, 18)
-            else
-                --window[2]:SetAnchor(TOP, window[1], BOTTOM, 0, 2)
-                --window[3]:SetAnchor(TOP, window[2], BOTTOM, 0, 2)
-                currentPetWindow:SetAnchor(TOP, window[i - 1], BOTTOM, 0, 2)
-            end
-        end
-    else
-        local CHILD_DIRECTIONS = { "Left", "Right", "Center" }
+			-- clear anchors to reset it
+			currentPetWindow:ClearAnchors()
+			if i == 1 then
+				currentPetWindow:SetAnchor(TOP, base, TOP, 0, 18)
+			else
+				currentPetWindow:SetAnchor(TOP, window[i - 1], BOTTOM, 0, 2)
+			end
+			
+			currentPetWindow:SetHidden(savedVars.useZosStyle)
+		end
+	end
 
-        local function SetColors(self)
-            local powerType = self.powerType
-            local gradient  = ZO_POWER_BAR_GRADIENT_COLORS[powerType]
-            for i, control in ipairs(self.barControls) do
-                ZO_StatusBar_SetGradientColor(control, gradient)
-                control:SetFadeOutLossColor(GetInterfaceColor(INTERFACE_COLOR_TYPE_POWER_FADE_OUT, powerType))
-                control:SetFadeOutGainColor(GetInterfaceColor(INTERFACE_COLOR_TYPE_POWER_FADE_IN, powerType))
-            end
-        end
+	function PetHealth.createZosFrames()
+		local CHILD_DIRECTIONS = { "Left", "Right", "Center" }
 
-        local PAB_TEMPLATES = {
-            [POWERTYPE_HEALTH]   = {
-                background = {
-                    Left   = "ZO_PlayerAttributeBgLeftArrow",
-                    Right  = "ZO_PlayerAttributeBgRightArrow",
-                    Center = "ZO_PlayerAttributeBgCenter",
-                },
-                frame      = {
-                    Left   = "ZO_PlayerAttributeFrameLeftArrow",
-                    Right  = "ZO_PlayerAttributeFrameRightArrow",
-                    Center = "ZO_PlayerAttributeFrameCenter",
-                },
-                warner     = {
-                    texture = "ZO_PlayerAttributeHealthWarnerTexture",
-                    Left    = "ZO_PlayerAttributeWarnerLeftArrow",
-                    Right   = "ZO_PlayerAttributeWarnerRightArrow",
-                    Center  = "ZO_PlayerAttributeWarnerCenter",
-                },
-                anchors    = {
-                    "ZO_PlayerAttributeHealthBarAnchorLeft",
-                    "ZO_PlayerAttributeHealthBarAnchorRight",
-                },
-            },
-            statusBar            = "ZO_PlayerAttributeStatusBar",
-            statusBarGloss       = "ZO_PlayerAttributeStatusBarGloss",
-            resourceNumbersLabel = "ZO_PlayerAttributeResourceNumbers",
-        }
+		local function SetColors(self)
+			local powerType = self.powerType
+			local gradient  = ZO_POWER_BAR_GRADIENT_COLORS[powerType]
+			for i, control in ipairs(self.barControls) do
+				ZO_StatusBar_SetGradientColor(control, gradient)
+				control:SetFadeOutLossColor(GetInterfaceColor(INTERFACE_COLOR_TYPE_POWER_FADE_OUT, powerType))
+				control:SetFadeOutGainColor(GetInterfaceColor(INTERFACE_COLOR_TYPE_POWER_FADE_IN, powerType))
+			end
+		end
 
-        local function ApplyStyle(bar)
-            local powerTypeTemplates  = PAB_TEMPLATES[bar.powerType]
-            local backgroundTemplates = powerTypeTemplates.background
-            local frameTemplates      = powerTypeTemplates.frame
+		local PAB_TEMPLATES = {
+			[COMBAT_MECHANIC_FLAGS_HEALTH]   = {
+				background = {
+					Left   = "ZO_PlayerAttributeBgLeftArrow",
+					Right  = "ZO_PlayerAttributeBgRightArrow",
+					Center = "ZO_PlayerAttributeBgCenter",
+				},
+				frame      = {
+					Left   = "ZO_PlayerAttributeFrameLeftArrow",
+					Right  = "ZO_PlayerAttributeFrameRightArrow",
+					Center = "ZO_PlayerAttributeFrameCenter",
+				},
+				warner     = {
+					texture = "ZO_PlayerAttributeHealthWarnerTexture",
+					Left    = "ZO_PlayerAttributeWarnerLeftArrow",
+					Right   = "ZO_PlayerAttributeWarnerRightArrow",
+					Center  = "ZO_PlayerAttributeWarnerCenter",
+				},
+				anchors    = {
+					"ZO_PlayerAttributeHealthBarAnchorLeft",
+					"ZO_PlayerAttributeHealthBarAnchorRight",
+				},
+			},
+			statusBar            = "ZO_PlayerAttributeStatusBar",
+			statusBarGloss       = "ZO_PlayerAttributeStatusBarGloss",
+			resourceNumbersLabel = "ZO_PlayerAttributeResourceNumbers",
+		}
 
-            local warnerControl       = bar:GetNamedChild("Warner")
-            local bgControl           = bar:GetNamedChild("BgContainer")
+		local function ApplyStyle(bar)
+			local powerTypeTemplates  = PAB_TEMPLATES[bar.powerType]
+			local backgroundTemplates = powerTypeTemplates.background
+			local frameTemplates      = powerTypeTemplates.frame
 
-            local warnerTemplates     = powerTypeTemplates.warner
+			local warnerControl       = bar:GetNamedChild("Warner")
+			local bgControl           = bar:GetNamedChild("BgContainer")
 
-            for _, direction in pairs(CHILD_DIRECTIONS) do
-                local bgChild = bgControl:GetNamedChild("Bg" .. direction)
-                ApplyTemplateToControl(bgChild, ZO_GetPlatformTemplate(backgroundTemplates[direction]))
+			local warnerTemplates     = powerTypeTemplates.warner
 
-                local frameControl = bar:GetNamedChild("Frame" .. direction)
-                ApplyTemplateToControl(frameControl, ZO_GetPlatformTemplate(frameTemplates[direction]))
+			for _, direction in pairs(CHILD_DIRECTIONS) do
+				local bgChild = bgControl:GetNamedChild("Bg" .. direction)
+				ApplyTemplateToControl(bgChild, ZO_GetPlatformTemplate(backgroundTemplates[direction]))
 
-                local warnerChild = warnerControl:GetNamedChild(direction)
-                ApplyTemplateToControl(warnerChild, ZO_GetPlatformTemplate(warnerTemplates.texture))
-                ApplyTemplateToControl(warnerChild, ZO_GetPlatformTemplate(warnerTemplates[direction]))
-            end
+				local frameControl = bar:GetNamedChild("Frame" .. direction)
+				ApplyTemplateToControl(frameControl, ZO_GetPlatformTemplate(frameTemplates[direction]))
 
-            for i, subBar in pairs(bar.barControls) do
-                ApplyTemplateToControl(subBar, ZO_GetPlatformTemplate(PAB_TEMPLATES.statusBar))
+				local warnerChild = warnerControl:GetNamedChild(direction)
+				ApplyTemplateToControl(warnerChild, ZO_GetPlatformTemplate(warnerTemplates.texture))
+				ApplyTemplateToControl(warnerChild, ZO_GetPlatformTemplate(warnerTemplates[direction]))
+			end
 
-                local gloss = subBar:GetNamedChild("Gloss")
-                ApplyTemplateToControl(gloss, ZO_GetPlatformTemplate(PAB_TEMPLATES.statusBarGloss))
+			for i, subBar in pairs(bar.barControls) do
+				ApplyTemplateToControl(subBar, ZO_GetPlatformTemplate(PAB_TEMPLATES.statusBar))
 
-                local anchorTemplates = powerTypeTemplates.anchors
-                if anchorTemplates then
-                    subBar:ClearAnchors()
-                    ApplyTemplateToControl(subBar, ZO_GetPlatformTemplate(anchorTemplates[i]))
-                else
-                    ApplyTemplateToControl(subBar, ZO_GetPlatformTemplate(PAB_TEMPLATES.anchor))
-                end
-            end
+				local gloss = subBar:GetNamedChild("Gloss")
+				ApplyTemplateToControl(gloss, ZO_GetPlatformTemplate(PAB_TEMPLATES.statusBarGloss))
 
-            local resourceNumbersLabel = bar:GetNamedChild("ResourceNumbers")
-            if resourceNumbersLabel then
-                ApplyTemplateToControl(resourceNumbersLabel, ZO_GetPlatformTemplate(PAB_TEMPLATES.resourceNumbersLabel))
-            end
-        end
+				local anchorTemplates = powerTypeTemplates.anchors
+				if anchorTemplates then
+					subBar:ClearAnchors()
+					ApplyTemplateToControl(subBar, ZO_GetPlatformTemplate(anchorTemplates[i]))
+				else
+					ApplyTemplateToControl(subBar, ZO_GetPlatformTemplate(PAB_TEMPLATES.anchor))
+				end
+			end
 
-        for i = 1, MAX_PET_UNIT_TAGS do
+			local resourceNumbersLabel = bar:GetNamedChild("ResourceNumbers")
+			if resourceNumbersLabel then
+				ApplyTemplateToControl(resourceNumbersLabel, ZO_GetPlatformTemplate(PAB_TEMPLATES.resourceNumbersLabel))
+			end
+		end
 
-            local currentPetWindow             = WINDOW_MANAGER:CreateControlFromVirtual("PetHealth" .. i, base, "PetHealth_ZOSStyleBar")
-            window[i] = currentPetWindow
+		for i = 1, MAX_PET_UNIT_TAGS do
 
-            -- label
-            local windowHeight    = currentPetWindow:GetHeight()
-            currentPetWindow.label, ctrl = AddControl(currentPetWindow, CT_LABEL, 10)
-            ctrl:SetFont("$(BOLD_FONT)|$(KB_16)|soft-shadow-thin")
-            ctrl:SetColor(GetInterfaceColor(INTERFACE_COLOR_TYPE_TEXT_COLORS, INTERFACE_TEXT_COLOR_NORMAL))
-            ctrl:SetDimensions(baseWidth, windowHeight * 0.4)
-            ctrl:SetAnchor(BOTTOMLEFT, currentPetWindow, TOPLEFT, 0, -10.5)
-            ctrl:SetAlpha(GetAlphaFromControl(savedVars.showLabels))
+			local currentPetWindow = WINDOW_MANAGER:CreateControlFromVirtual("PetHealth" .. i, base, "PetHealth_ZOSStyleBar")
+			windowZos[i] = currentPetWindow
 
-            -- bars
-            currentPetWindow.barleft     = currentPetWindow:GetNamedChild("BarLeft")
-            currentPetWindow.barright    = currentPetWindow:GetNamedChild("BarRight")
+			-- label
+			local windowHeight    = currentPetWindow:GetHeight()
+			currentPetWindow.label, ctrl = AddControl(currentPetWindow, CT_LABEL, 10)
+			ctrl:SetFont("$(BOLD_FONT)|$(KB_16)|soft-shadow-thin")
+			ctrl:SetColor(GetInterfaceColor(INTERFACE_COLOR_TYPE_TEXT_COLORS, INTERFACE_TEXT_COLOR_NORMAL))
+			ctrl:SetDimensions(baseWidth, windowHeight * 0.4)
+			ctrl:SetAnchor(BOTTOMLEFT, currentPetWindow, TOPLEFT, 0, -10.5)
+			ctrl:SetAlpha(GetAlphaFromControl(savedVars.showLabels))
 
-            currentPetWindow.barControls = { currentPetWindow.barleft, currentPetWindow.barright }
-            currentPetWindow.powerType   = POWERTYPE_HEALTH
+			-- bars
+			currentPetWindow.barleft     = currentPetWindow:GetNamedChild("BarLeft")
+			currentPetWindow.barright    = currentPetWindow:GetNamedChild("BarRight")
 
-            SetColors(currentPetWindow)
-            ApplyStyle(currentPetWindow)
+			currentPetWindow.barControls = { currentPetWindow.barleft, currentPetWindow.barright }
+			currentPetWindow.powerType   = COMBAT_MECHANIC_FLAGS_HEALTH
 
-            -- shield
-            currentPetWindow.shieldleft  = currentPetWindow:GetNamedChild("ShieldLeft")
-            currentPetWindow.shieldright = currentPetWindow:GetNamedChild("ShieldRight")
+			SetColors(currentPetWindow)
+			ApplyStyle(currentPetWindow)
 
-            -- values
-            currentPetWindow.values      = currentPetWindow:GetNamedChild("ResourceNumbers")
-            currentPetWindow.values:SetAlpha(GetAlphaFromControl(savedVars.showValues))
-            -- ctrl:SetHidden(not savedVars.showValues or false)
+			-- shield
+			currentPetWindow.shieldleft  = currentPetWindow:GetNamedChild("ShieldLeft")
+			currentPetWindow.shieldright = currentPetWindow:GetNamedChild("ShieldRight")
+			local function setupshield(shieldCtrl)
+				shieldCtrl:SetColor(1, 1, 1, 0.5)
+				shieldCtrl:SetGradientColors(.5, .5, 1, .3, .25, .25, .5, .5)
+				shieldCtrl:SetValue(0)
+				shieldCtrl:SetMinMax(0, 1)
+			end
+			setupshield(currentPetWindow.shieldleft)
+			setupshield(currentPetWindow.shieldright)
+			
+			-- values
+			currentPetWindow.values      = currentPetWindow:GetNamedChild("ResourceNumbers")
+			currentPetWindow.values:SetAlpha(GetAlphaFromControl(savedVars.showValues))
+			-- ctrl:SetHidden(not savedVars.showValues or false)
 
-            currentPetWindow.warner = PetHealthWarner:New(currentPetWindow)
+			currentPetWindow.warner = PetHealthWarner:New(currentPetWindow)
 
-            if i == 1 then
-                currentPetWindow:SetAnchor(TOP, base, TOP, 0, 18)
-            else
-                currentPetWindow:SetAnchor(TOP, window[i - 1], BOTTOM, 0, 20)
-            end
-        end
-
-        --[[
-        window[1]:SetAnchor(TOP, base, TOP, 0, 18)
-        window[2]:SetAnchor(TOP, window[1], BOTTOM, 0, 20)
-        window[3]:SetAnchor(TOP, window[2], BOTTOM, 0, 20)
-        ]]
-    end
-
+			if i == 1 then
+				currentPetWindow:SetAnchor(TOP, base, TOP, 0, 18)
+			else
+				currentPetWindow:SetAnchor(TOP, windowZos[i - 1], BOTTOM, 0, 20)
+			end
+			--currentPetWindow:SetHidden(not savedVars.useZosStyle)
+		end
+	end
+    
+	if (not savedVars.useZosStyle) then PetHealth.createNormalFrames() else PetHealth.createZosFrames() end
+ 
     -----------
     -- SCENE --
     -----------
-    PET_BAR_FRAGMENT = ZO_HUDFadeSceneFragment:New(base)
-    HUD_SCENE:AddFragment(PET_BAR_FRAGMENT)
-    HUD_UI_SCENE:AddFragment(PET_BAR_FRAGMENT)
-    PET_BAR_FRAGMENT:SetHiddenForReason("NoPetOrOnlyInCombat", true)
+    PetHealth.PET_BAR_FRAGMENT = ZO_HUDFadeSceneFragment:New(base)
+    HUD_SCENE:AddFragment(PetHealth.PET_BAR_FRAGMENT)
+    HUD_UI_SCENE:AddFragment(PetHealth.PET_BAR_FRAGMENT)
+    PetHealth.PET_BAR_FRAGMENT:SetHiddenForReason("NoPetOrOnlyInCombat", true)
 end
 
 local function OnUnitDestroyed(eventCode, unitTag)
@@ -831,13 +828,13 @@ local function OnUnitDestroyed(eventCode, unitTag)
     if key ~= nil then
         trem(currentPets, key)
         -- debug
-        --ChatOutput(string.format("%s destroyed", unitTag))
+        --d(string.format("%s destroyed", unitTag))
         -- refresh
         local countPets = GetTableSize(currentPets)
         if countPets > 0 then
             for i = 1, countPets do
                 local currentPetData = currentPets[i]
-                local currentPetWindow = window[i]
+                local currentPetWindow = GetCurrentWidow(i)
                 if currentPetWindow ~= nil then
                     local name    = currentPetData.unitName
                     if doDebug then d("[PetHealth]OnUnitDestroyed - name: " ..tos(name)) end
@@ -933,6 +930,7 @@ local function LoadEvents()
     EVENT_MANAGER:AddFilterForEvent(companionEventName, EVENT_UNIT_ATTRIBUTE_VISUAL_UPDATED, REGISTER_FILTER_UNIT_TAG, UNIT_COMPANION)
 
     EVENT_MANAGER:RegisterForEvent(addonName, EVENT_PLAYER_DEAD, GetActivePets)
+	EVENT_MANAGER:RegisterForEvent(addonName, EVENT_ACTION_LAYER_POPPED, function() if getingPetATM then return end getingPetATM = true GetActivePets() end)
     EVENT_MANAGER:RegisterForEvent(addonName, EVENT_UNIT_DEATH_STATE_CHANGE, GetActivePets)
     EVENT_MANAGER:RegisterForEvent(addonName, EVENT_ACTION_SLOT_ABILITY_SLOTTED, GetActivePets)
 
@@ -983,23 +981,19 @@ function PetHealth.changeValues(toValue)
     for i = 1, MAX_PET_UNIT_TAGS do
         -- local alpha = GetAlphaFromControl(savedVars.showValues)
         -- d(alpha)
-        window[i].values:SetAlpha(GetAlphaFromControl(toValue))
+        GetCurrentWidow(i).values:SetAlpha(GetAlphaFromControl(toValue))
     end
 end
 
 function PetHealth.changeLabels(toValue)
     for i = 1, MAX_PET_UNIT_TAGS do
-        window[i].label:SetAlpha(GetAlphaFromControl(toValue))
+        GetCurrentWidow(i).label:SetAlpha(GetAlphaFromControl(toValue))
     end
 end
 
 function PetHealth.changeCompanion(toValue)
     savedVars.showCompanion = toValue
     GetActivePets()
-end
-
-function PetHealth.lockPetWindow(toValue)
-    lockWindow = toValue
 end
 
 function PetHealth.lowHealthAlertPercentage(toValue)
@@ -1018,7 +1012,18 @@ function PetHealth.onlyInCombatHealthPercentage(toValue)
     onlyInCombatHealthPercentage = toValue
 end
 
+function PetHealth.frameStyleChanged()
+	if windowZos[1] == nil then PetHealth.createZosFrames() end
+	if window[1] == nil then PetHealth.createNormalFrames() end
+   for i = 1,  GetTableSize(currentPets) do
+        windowZos[i]:SetHidden(not savedVars.useZosStyle)
+		window[i]:SetHidden(savedVars.useZosStyle)
+    end
+	GetActivePets()
+end
+
 local function SlashCommands()
+
 	local function slash_pethealthdebug()
 	 	savedVars.debug = not savedVars.debug
      	savedVars.debug = savedVars.debug
@@ -1142,7 +1147,6 @@ local function SlashCommands()
 		LSC:Register("/pethealthwarnshield", function(shieldValuePercent) slash_pethealthwarnshield(shieldValuePercent) end, GetString(SI_PET_HEALTH_LSC_WARN_SHIELD))
 		LSC:Register("/pethealthcombathealth", function(combatHealthValuePercent) slash_pethealthcombathealth(combatHealthValuePercent) end, GetString(SI_PET_HEALTH_LSC_COMBAT_HEALTH))
 	else
-	--  SLASH_COMMANDS["/pethealthdebug"]=function() slash_pethealthdebug() end
 		SLASH_COMMANDS["/pethealthcombat"]=function() slash_pethealthcombat() end
 		SLASH_COMMANDS["/pethealthhideindungeon"]=function() slash_pethealthhideindungeon() end
 		SLASH_COMMANDS["/pethealthvalues"]=function() slash_pethealthvalues() end
@@ -1156,8 +1160,23 @@ local function SlashCommands()
 		SLASH_COMMANDS["/pethealthunsummonedalerts"]=function() slash_pethealthunsummonedalerts() end
 		SLASH_COMMANDS["/pethealthwarnhealth"]=function(healthValuePercent) slash_pethealthwarnhealth(healthValuePercent) end
 		SLASH_COMMANDS["/pethealthwarnshield"]=function(shieldValuePercent) slash_pethealthwarnshield(shieldValuePercent) end
-		SLASH_COMMANDS["/pethealthcombathealth"]=function(combatHealthValuePercent) slash_pethealthcombathealth(combatHealthValuePercent) end
-		
+		SLASH_COMMANDS["/pethealthcombathealth"]=function(combatHealthValuePercent) slash_pethealthcombathealth(combatHealthValuePercent) end	
+	end
+	SLASH_COMMANDS["/pethealthcolorhealth"]=function(healthColorValue) 
+		if healthColorValue == nil or healthColorValue == "" then d("Enter hex code e.g "..default.lowHealthAlertColor)
+		else 
+			d("|c"..savedVars.lowHealthAlertColor.." Changed from: "..savedVars.lowHealthAlertColor)
+			savedVars.lowHealthAlertColor = healthColorValue
+			d("|c"..savedVars.lowHealthAlertColor.." To: "..savedVars.lowHealthAlertColor)
+		end
+	end
+	SLASH_COMMANDS["/pethealthcolorshield"]=function(shieldColorValue) 
+		if shieldColorValue == nil or shieldColorValue == "" then d("Enter hex code e.g "..default.lowShieldAlertColor)
+		else 
+			d("|c"..savedVars.lowShieldAlertColor.." Changed from: "..savedVars.lowShieldAlertColor)
+			savedVars.lowShieldAlertColor = shieldColorValue
+			d("|c"..savedVars.lowShieldAlertColor.." To: "..savedVars.lowShieldAlertColor)
+		end
 	end
 end
 
@@ -1184,7 +1203,7 @@ local function OnAddOnLoaded(_, addonName)
     local supportedClass         = supportedClasses[getUnitClassId] or savedVars.showCompanion
     if not supportedClass then
         -- debug
-        ChatOutput("[PetHealth] " .. GetString(SI_PET_HEALTH_CLASS))
+        d("[PetHealth] " .. GetString(SI_PET_HEALTH_CLASS))
         return
     end
 
@@ -1192,19 +1211,18 @@ local function OnAddOnLoaded(_, addonName)
 
     --Makes libs completely optional
     --If users want to change default values or expanded funcitonality, they will need to install applicable libs
-    LAM = LibAddonMenu2
+    LHAS = LibHarvensAddonSettings 
     LSC = LibSlashCommander
 
-    if LAM then
-        --Build the LAM addon menu if the library LibAddonMenu-2.0 was found loaded properly
-        PetHealth.LAM = LAM
-        PetHealth.buildLAMAddonMenu()
+    if LHAS then
+        --Build the LHAS addon menu if the library LibHarvensAddonSettings was found loaded properly
+        PetHealth.LHAS = LHAS
+        PetHealth.buildLHASAddonMenu()
     end
 
-    
-    --Build the slash commands if the library LibSlashCommander was found loaded properly
+
+    --Build the slash commands with base game Slash unless if the library LibSlashCommander was found loaded properly
     SlashCommands()
-    
 
     -- create ui
     CreateWarner()
@@ -1214,7 +1232,7 @@ local function OnAddOnLoaded(_, addonName)
     LoadEvents()
 
     -- debug
-    --ChatOutput("loaded")
+    --d("loaded")
 end
 
 EVENT_MANAGER:RegisterForEvent(addon.name, EVENT_ADD_ON_LOADED, OnAddOnLoaded)
