@@ -1,4 +1,4 @@
---Initial LAM Settings support and code cleanup by Baertram
+--Initial LHAS Settings support and code cleanup by Baertram and moved to LHAS by Gamer_sa22 for console use
 
 PetHealth = PetHealth or {}
 
@@ -14,28 +14,16 @@ local function updateExcludedZonesForHide()
 end
 PetHealth.updateExcludedZonesForHide = updateExcludedZonesForHide
 
-function PetHealth.buildLAMAddonMenu()
+function PetHealth.buildLHASAddonMenu()
     local settings = PetHealth.savedVars
-    if not PetHealth.LAM or not settings then return false end
+    if not PetHealth.LHAS or not settings then return false end
 
     local defaults = PetHealth.savedVarsDefault
     local addonVars = PetHealth.addonData
 
-    local panelData = {
-        type 				= 'panel',
-        name 				= addonVars.name,
-        displayName 		= addonVars.lamDisplayName,
-        author 				= addonVars.lamAuthor,
-        version 			= tostring(addonVars.version),
-        registerForRefresh 	= false,
-        registerForDefaults = true,
-        slashCommand        = "/pethealthsettings",
-        website             = addonVars.lamUrl
-    }
-
     local savedVariablesOptions = {
-        [1] = GetString(SI_PET_HEALTH_EACH_CHAR),
-        [2] = GetString(SI_PET_HEALTH_ACCOUNT_WIDE),
+		[1] = {name = GetString(SI_PET_HEALTH_EACH_CHAR), data = 1,},
+		[2] = {name = GetString(SI_PET_HEALTH_ACCOUNT_WIDE), data = 2,},
     }
 	
 	local PetHealthWindowInMenu = false
@@ -59,61 +47,47 @@ function PetHealth.buildLAMAddonMenu()
 			PetHealthWindowInMenu = false
 		end
 	end
-	CALLBACK_MANAGER:RegisterCallback("LAM-RefreshPanel", addonSelected)	
 	CALLBACK_MANAGER:RegisterCallback("LibHarvensAddonSettings_AddonSelected", addonSelected)
-    --Register the LAM panel and add it to the global PetHealth table
-    PetHealth.LAM_SettingsPanel = PetHealth.LAM:RegisterAddonPanel(addonVars.name .. "_LAM", panelData)
     --Create the options table for the LAM controls
-    local optionsTable =
-    {	-- BEGIN OF OPTIONS TABLE
-
-        {
-            type = 'description',
-            text = GetString(SI_PET_HEALTH_DESC),
-        },
-		--drop down be broken
-       --[[{
-            type = 'dropdown',
-            name = GetString(SI_PET_HEALTH_SAVE_TYPE),
-            tooltip = GetString(SI_PET_HEALTH_SAVE_TYPE_TT),
-            choices = savedVariablesOptions,
-            getFunc = function() return savedVariablesOptions[PetHealth_Save[GetWorldName()][GetDisplayName()]['$AccountWide']["saveMode"]]--[[ end,
-         setFunc = function(value)
-                for i,v in pairs(savedVariablesOptions) do
-                    if v == value then
-                        PetHealth_Save[GetWorldName()][GetDisplayName()]['$AccountWide']["saveMode"] = i
-                    end
-                end
-            end,
-            requiresReload = true,
-        },--]]
-		 {
-            type = "checkbox",
-            name = GetString(SI_PET_HEALTH_SAVE_TYPE).." : "..GetString(SI_PET_HEALTH_EACH_CHAR),
-            tooltip = GetString(SI_PET_HEALTH_SAVE_TYPE_TT),
-            getFunc = function() return savedVariablesOptions[PetHealth_Save[GetWorldName()][GetDisplayName()]['$AccountWide']["saveMode"]] end,
-            setFunc = function(value) 
-				for i,v in pairs(savedVariablesOptions) do
-                    if v == value then
-                        PetHealth_Save[GetWorldName()][GetDisplayName()]['$AccountWide']["saveMode"] = i
-                    end
-                end
-            end,
-            width="full",
-            requiresReload = true,
-        },
-
+    local notDefaultsFun = false
+	local options = {
+        allowDefaults = true, --will allow users to reset the settings to default values
+        allowRefresh = true, --if this is true, when one of settings is changed, all other settings will be checked for state change (disable/enable)
+        defaultsFunction = function() --this function is called when allowDefaults is true and user hit the reset button
+           
+		   d("Reset")
+        end,
+    }
+	PetHealth.LHAS_SettingsPanel = PetHealth.LHAS:AddAddon(addonVars.lhasDisplayName, options)
 	
+   local optionsTable ={	
+		-- BEGIN OF OPTIONS TABLE
+		{
+			type = PetHealth.LHAS.ST_SECTION,
+			label = GetString(SI_PET_HEALTH_DESC),
+		},
+		{
+			type = PetHealth.LHAS.ST_DROPDOWN,
+			label = GetString(SI_PET_HEALTH_SAVE_TYPE),
+			tooltip = GetString(SI_PET_HEALTH_SAVE_TYPE_TT).."\n |ce00000"..GetString(SI_PET_HEALTH_LAM_RELOADUI_WARNING),
+			items = savedVariablesOptions,
+			getFunction = function() return savedVariablesOptions[settings.saveMode].name end,
+			setFunction = function(control, itemName, itemData) 
+				settings.saveMode = itemData.data
+				if notDefaultsFun then ReloadUI() end
+			end,
+			default = savedVariablesOptions[defaults.saveMode].name
+		},	
         --==============================================================================
         {
-            type = 'header',
-            name = GetString(SI_PET_HEALTH_LAM_HEADER_VISUAL),
-        },
+			type = PetHealth.LHAS.ST_SECTION,
+			label = GetString(SI_PET_HEALTH_LAM_HEADER_VISUAL),
+		},
 		{
-            type = "checkbox",
-            name = "Show Pet Window Here",
-            getFunc = function() return PetHealthWindowInMenu end,
-            setFunc = function(value) 	
+			type = PetHealth.LHAS.ST_CHECKBOX,
+			label = "Show Pet Window Here",
+			getFunction = function() return PetHealthWindowInMenu end,
+			setFunction = function(value) 	
 				if PetHealthWindowInMenu == value then return end
 				if not PetHealthWindowInMenu then
 					addPetHealthWindow()
@@ -121,199 +95,189 @@ function PetHealth.buildLAMAddonMenu()
 					addonSelected()
 				end			
             end,
-            width="full",
-			default = false,
-        },
+			default = false
+		},
 		{
-            type = "slider",
-            name = "Left <- -> Right",
-            tooltip = "move it left or right",
-            getFunc = function() return settings.x end,
-            setFunc = function(value) 
+			type = PetHealth.LHAS.ST_SLIDER,
+			label = "Left <- -> Right",
+			tooltip = "move it left or right",
+			min = -30, max = maxX, step = 5,
+			getFunction = function() return settings.x end,
+			setFunction = function(value) 
 				settings.x = value
                PetHealth.MovePetWindow()
-            end,
-            min = 0,
-            max = maxX,
-            step = 5,
-            clampInput = true,
-            decimals = 0,
-            autoSelect = false,
-            inputLocation = "right",
-            width = "full",
-            default = defaults.x,
-        },
+			end,
+			default = defaults.x
+		},
 		{
-            type = "slider",
-            name = "Up <- -> Down",
-            tooltip = "move it up or down",
-            getFunc = function() return settings.y end,
-            setFunc = function(value) 
+			type = PetHealth.LHAS.ST_SLIDER,
+			label = "Up <- -> Down",
+			tooltip = "move it up or down",
+			min = -30, max = maxY, step = 5,
+			getFunction = function() return settings.y end,
+			setFunction = function(value) 
 				settings.y = value
                PetHealth.MovePetWindow()
-            end,
-            min = 0,
-            max = maxY,
-            step = 5,
-            clampInput = true,
-            decimals = 0,
-            autoSelect = false,
-            inputLocation = "right",
-            width = "full",
-            default = defaults.y,
-        },
-        {
-            type = "checkbox",
-            name = GetString(SI_PET_HEALTH_LAM_BACKGROUND),
-            tooltip = GetString(SI_PET_HEALTH_LAM_BACKGROUND_TT),
-            getFunc = function() return settings.showBackground end,
-            setFunc = function(value) settings.showBackground = value
-                PetHealth.changeBackground(value)
-            end,
-            default = defaults.showBackground,
-            disabled = function() return settings.useZosStyle end,
-            width="full",
-        },
-        {
-            type = "checkbox",
-            name = GetString(SI_PET_HEALTH_LAM_LABELS),
+			end,
+			default = defaults.y
+		},
+		{
+			type = PetHealth.LHAS.ST_CHECKBOX,
+			label = GetString(SI_PET_HEALTH_LAM_LABELS),
             tooltip = GetString(SI_PET_HEALTH_LAM_LABELS_TT),
-            getFunc = function() return settings.showLabels end,
-            setFunc = function(value) settings.showLabels = value
-                PetHealth.changeLabels(value)
-            end,
-            default = defaults.showLabels,
-            width="full",
-        },
-        {
-            type = "checkbox",
-            name = GetString(SI_PET_HEALTH_LAM_VALUES),
+			getFunction = function() return settings.showLabels end,
+			setFunction = function(value) 
+				settings.showLabels = value
+                PetHealth.changeLabels(value) 
+			end,
+			default = defaults.showLabels,
+		},
+		{
+			type = PetHealth.LHAS.ST_CHECKBOX,
+			label =  GetString(SI_PET_HEALTH_LAM_VALUES),
             tooltip = GetString(SI_PET_HEALTH_LAM_VALUES_TT),
-            getFunc = function() return settings.showValues end,
-            setFunc = function(value) settings.showValues = value
-                PetHealth.changeValues(value)
-            end,
-            default = defaults.showValues,
-            width="full",
-        },
-        {
-            type = "checkbox",
-            name = GetString(SI_PET_HEALTH_LAM_UNSUMMONED_ALERT),
+			getFunction = function() return settings.showValues end,
+			setFunction = function(value) 
+				settings.showValues = value
+                PetHealth.changeValues(value) 
+			end,
+			default = defaults.showValues,
+		},
+		{
+			type = PetHealth.LHAS.ST_CHECKBOX,
+			label = GetString(SI_PET_HEALTH_LAM_UNSUMMONED_ALERT),
             tooltip = GetString(SI_PET_HEALTH_LAM_UNSUMMONED_ALERT_TT),
-            getFunc = function() return settings.petUnsummonedAlerts end,
-            setFunc = function(value) settings.petUnsummonedAlerts = value
-                PetHealth.unsummonedAlerts(value)
-            end,
-            default = defaults.petUnsummonedAlerts,
-            width="full",
-        },
-        {
-            type = "checkbox",
-            name = GetString(SI_PET_HEALTH_LAM_USE_ZOS_STYLE),
+			getFunction = function() return settings.petUnsummonedAlerts end,
+			setFunction = function(value) 
+				settings.petUnsummonedAlerts = value
+                PetHealth.unsummonedAlerts(value) 
+			end,
+			default = defaults.petUnsummonedAlerts,
+		},
+		{
+			type = PetHealth.LHAS.ST_CHECKBOX,
+			label = GetString(SI_PET_HEALTH_LAM_USE_ZOS_STYLE),
             tooltip = GetString(SI_PET_HEALTH_LAM_USE_ZOS_STYLE_TT),
-            getFunc = function() return settings.useZosStyle end,
-            setFunc = function(value) 
+			getFunction = function() return settings.useZosStyle end,
+			setFunction = function(value) 
 				settings.useZosStyle = value
                 settings.showBackground = not value
                 PetHealth.changeBackground(not value)
-				ReloadUI()
-            end,
-            width = "full",
-           requiresReload = true,
-        },
+				PetHealth.frameStyleChanged()
+			end,
+			default = defaults.useZosStyle,
+		},
         {
-            type = "slider",
-            name = GetString(SI_PET_HEALTH_LAM_LOW_HEALTH_WARN),
+			type = PetHealth.LHAS.ST_CHECKBOX,
+			label = GetString(SI_PET_HEALTH_LAM_BACKGROUND),
+            tooltip = GetString(SI_PET_HEALTH_LAM_BACKGROUND_TT),
+			getFunction = function() return settings.showBackground end,
+			setFunction = function(value) 
+				settings.showBackground = value
+                PetHealth.changeBackground(value) 
+			end,
+			disable = function() return  settings.useZosStyle end, 
+			default = defaults.showBackground,
+		},
+		{
+			type = PetHealth.LHAS.ST_SLIDER,
+			label = GetString(SI_PET_HEALTH_LAM_LOW_HEALTH_WARN),
             tooltip = GetString(SI_PET_HEALTH_LAM_LOW_HEALTH_WARN_TT),
-            getFunc = function() return settings.lowHealthAlertSlider end,
-            setFunc = function(value) settings.lowHealthAlertSlider = value
+			min = 0, max = 99, step = 1,
+			getFunction = function() return settings.lowHealthAlertSlider end,
+			setFunction = function(value) 
+				settings.lowHealthAlertSlider = value
                 PetHealth.lowHealthAlertPercentage(value)
-            end,
-            min = 0,
-            max = 99,
-            step = 1,
-            clampInput = true,
-            decimals = 0,
-            autoSelect = false,
-            inputLocation = "right",
-            width = "full",
-            default = defaults.lowHealthAlertSlider,
-        },
-        {
-            type = "slider",
-            name = GetString(SI_PET_HEALTH_LAM_LOW_SHIELD_WARN),
+			end,
+			default = defaults.lowHealthAlertSlider
+		},
+		{
+			type = PetHealth.LHAS.ST_SLIDER,
+			label = GetString(SI_PET_HEALTH_LAM_LOW_SHIELD_WARN),
             tooltip = GetString(SI_PET_HEALTH_LAM_LOW_SHIELD_WARN_TT),
-            getFunc = function() return settings.lowShieldAlertSlider end,
-            setFunc = function(value) settings.lowShieldAlertSlider = value
+			min = 0, max = 99, step = 1,
+			getFunction = function() return settings.lowShieldAlertSlider end,
+			setFunction = function(value) 
+				settings.lowShieldAlertSlider = value
                 PetHealth.lowShieldAlertPercentage(value)
-            end,
-            min = 0,
-            max = 99,
-            step = 1,
-            clampInput = true,
-            decimals = 0,
-            autoSelect = false,
-            inputLocation = "right",
-            width = "full",
-            default = defaults.lowShieldAlertSlider,
-        },
-        {
-            type = "checkbox",
-            name = GetString(SI_PET_HEALTH_LAM_COMPANION),
+			end,
+			default = defaults.lowShieldAlertSlider
+		},
+		{
+			type = PetHealth.LHAS.ST_COLOR,
+			label = "low Health Alert Color",
+			tooltip = function() return zo_strformat("|c"..settings.lowHealthAlertColor.."<<1>> <<2>>|r", "PET NAME", GetString(SI_PET_HEALTH_LOW_HEALTH_WARNING_MSG)) end,
+			getFunction = function() return ZO_ColorDef:New(settings.lowHealthAlertColor):UnpackRGBA() end,
+			setFunction = function(r, g, b, a) settings.lowHealthAlertColor = ZO_ColorDef:New(r, g, b):ToHex() end,
+			default = {ZO_ColorDef:New(defaults.lowHealthAlertColor):UnpackRGBA()},
+		},
+		{
+			type = PetHealth.LHAS.ST_COLOR,
+			label = "low Shield Alert Color",
+			tooltip = function() return zo_strformat("|c"..settings.lowShieldAlertColor.."<<1>>\'s <<2>>|r", "PET NAME", GetString(SI_PET_HEALTH_LOW_SHIELD_WARNING_MSG)) end,
+			getFunction = function() return ZO_ColorDef:New(settings.lowShieldAlertColor):UnpackRGBA() end,
+			setFunction = function(r, g, b, a) settings.lowShieldAlertColor = ZO_ColorDef:New(r, g, b):ToHex() end,
+			default = {ZO_ColorDef:New(defaults.lowShieldAlertColor):UnpackRGBA()},
+		},
+		{
+			type = PetHealth.LHAS.ST_CHECKBOX,
+			label = GetString(SI_PET_HEALTH_LAM_COMPANION),
             tooltip = GetString(SI_PET_HEALTH_LAM_COMPANION_TT),
-            getFunc = function() return settings.showCompanion end,
-            setFunc = function(value) settings.showCompanion = value
+			getFunction = function() return settings.showCompanion end,
+			setFunction = function(value) 
+				settings.showCompanion = value
                 PetHealth.changeCompanion(value)
-            end,
-            default = defaults.showCompanion,
-            width="full",
-        },
+			end,
+			default = defaults.showCompanion,
+		},
         --==============================================================================
-        {
-            type = 'header',
-            name = GetString(SI_PET_HEALTH_LAM_HEADER_BEHAVIOR),
-        },
-        {
-            type = "checkbox",
-            name = GetString(SI_PET_HEALTH_LAM_HIDE_IN_DUNGEON),
+		{
+			type = PetHealth.LHAS.ST_SECTION,
+			label = GetString(SI_PET_HEALTH_LAM_HEADER_BEHAVIOR),
+		},
+		{
+			type = PetHealth.LHAS.ST_CHECKBOX,
+			label = GetString(SI_PET_HEALTH_LAM_HIDE_IN_DUNGEON),
             tooltip = GetString(SI_PET_HEALTH_LAM_HIDE_IN_DUNGEON_TT),
-            getFunc = function() return settings.hideInDungeon end,
-            setFunc = function(value) settings.hideInDungeon = value
+			getFunction = function() return settings.hideInDungeon end,
+			setFunction = function(value) 
+				settings.hideInDungeon = value
                 PetHealth.hideInDungeon(value)
-            end,
-            default = defaults.hideInDungeon,
-            width="full",
-        },
-        {
-            type = "checkbox",
-            name = GetString(SI_PET_HEALTH_LAM_ONLY_IN_COMBAT),
+			end,
+			default = defaults.hideInDungeon,
+		},
+		{
+			type = PetHealth.LHAS.ST_CHECKBOX,
+			label = GetString(SI_PET_HEALTH_LAM_ONLY_IN_COMBAT),
             tooltip = GetString(SI_PET_HEALTH_LAM_ONLY_IN_COMBAT_TT),
-            getFunc = function() return settings.onlyInCombat end,
-            setFunc = function(value) settings.onlyInCombat = value
+			getFunction = function() return settings.onlyInCombat end,
+			setFunction = function(value) 
+				settings.onlyInCombat = value
                 PetHealth.changeCombatState()
-            end,
-            default = defaults.onlyInCombat,
-            width="full",
-        },
-        {
-            type = "slider",
-            name = GetString(SI_PET_HEALTH_LAM_ONLY_IN_COMBAT_HEALTH),
+			end,
+			default = defaults.onlyInCombat,
+		},
+		{
+			type = PetHealth.LHAS.ST_SLIDER,
+			label = GetString(SI_PET_HEALTH_LAM_ONLY_IN_COMBAT_HEALTH),
             tooltip = GetString(SI_PET_HEALTH_LAM_ONLY_IN_COMBAT_HEALTH_TT),
-            getFunc = function() return settings.onlyInCombatHealthSlider end,
-            setFunc = function(value) settings.onlyInCombatHealthSlider = value
+			min = 0, max = 99, step = 1,
+			getFunction = function() return settings.onlyInCombatHealthSlider end,
+			setFunction = function(value) 
+				settings.onlyInCombatHealthSlider = value
                 PetHealth.onlyInCombatHealthPercentage(value)
-            end,
-            min = 0,
-            max = 99,
-            step = 1,
-            clampInput = true,
-            decimals = 0,
-            autoSelect = false,
-            inputLocation = "right",
-            width = "full",
-            default = defaults.onlyInCombatHealthSlider,
-        },   
+			end,
+			default = defaults.onlyInCombatHealthSlider
+		},  
+		{
+			type = PetHealth.LHAS.ST_BUTTON,
+			label = "Submit Feedback / Request",
+			buttonText = "Submit",
+			tooltip = "link to a form where you can leave feedback or even leave a request",
+			clickHandler = function(control) RequestOpenUnsafeURL("https://docs.google.com/forms/d/e/1FAIpQLScYWtcIJmjn0ZUrjsvpB5rwA5AlsLvasHUIcKqzIYcogo9vjQ/viewform?usp=pp_url&entry.550722213=".."Pet Health") end,
+		},
     } -- optionsTable
+	
     -- Optional suport for LibAddonMenuOrderListBox
 	if LibAddonMenuOrderListBox then
 		table.insert(optionsTable, {
@@ -360,5 +324,5 @@ function PetHealth.buildLAMAddonMenu()
 	end   
 	-- END OF OPTIONS TABLE
 	--Create the LAM panel now
-    PetHealth.LAM:RegisterOptionControls(addonVars.name .. "_LAM", optionsTable)
+	PetHealth.LHAS_SettingsPanel:AddSettings(optionsTable)
 end
