@@ -1,6 +1,6 @@
 --Elder Scrolls: Online addon (written in LUA) which adds persistent in-game health bars to all permanent pets.
 --Original/base work of this addon was developed by SCOOTWORKS and I was granted permission by him to take over full development and distribution of this addon.
-PetHealth = PetHealth or {}
+PetHealth                          = PetHealth or {}
 --The supported classes for this addon (ClassId from function GetUnitClassId("player"))
 PetHealth.supportedClasses         = {
     [1]   = true, -- Dragonknight
@@ -26,10 +26,10 @@ PetHealth.addonData                = addon
 
 local default                      = {
     saveMode                 = 1, -- Default for each character setting
-    point                    = 0, -- 0 as we want it to be based off top left
-    relPoint                 = 0, -- ^^^
-    x                        = 15,
-    y                        = 400,--seems like a good spot to avoid group ui
+    point                    = TOPLEFT,
+    relPoint                 = CENTER,
+    x                        = 0,
+    y                        = 0,
     onlyInCombat             = false,
     showValues               = true,
     showLabels               = true,
@@ -71,6 +71,7 @@ local window                       = {}
 PetHealth.window = window
 local inCombatAddon                = false
 local lang = GetCVar("language.2") 
+
 --local AddOnManager                 = GetAddOnManager()
 local hideInDungeon                = false
 local LAM
@@ -89,7 +90,7 @@ local WINDOW_MANAGER               = GetWindowManager()
 local WINDOW_WIDTH                 = 250
 local WINDOW_HEIGHT_PER_PET        = 40 -- Height per pet bar
 local WINDOW_HEIGHT_BASE           = 36 -- Base height for no pets
-PetHealth.PET_BAR_FRAGMENT 		   = nil
+local PET_BAR_FRAGMENT
 
 ----------
 -- UTIL --
@@ -100,10 +101,10 @@ local function OnScreenMessage(message)
     messageParams:SetText(message)
     CENTER_SCREEN_ANNOUNCE:AddMessageWithParams(messageParams)
 end
---disables for console suport
---local function d(message)
- --   CHAT_SYSTEM:AddMessage(message)
---end
+
+local function ChatOutput(message)
+    CHAT_SYSTEM:AddMessage(message)
+end
 
 --[[
 local function CheckAddon(addonName)
@@ -116,7 +117,8 @@ local function CheckAddon(addonName)
 end
 ]]
 
-local petNameLang={
+
+local validPets = {
 	["fr"]={
 		["gardien éternel"]=true,
 		["gardien sauvage"]=true,
@@ -188,11 +190,11 @@ if not petNameLang[lang] then lang="en" end
 local function IsUnitValidPet(unitTag)
     --[[
     Hier durchsuchen wir die Tabellen oben, ob wir den unitTag wirklich in unsere Tabelle aufnehmen.
-	Here we search the tables above to see if we should really include the unitTag in our table.
     ]]
     local unitName = zo_strformat("<<z:1>>", GetUnitName(unitTag))
-    --zo_callLater(function() d(unitName) end, 10000)
-    return DoesUnitExist(unitTag) and petNameLang[lang][unitName]
+    --zo_callLater(function() ChatOutput(unitName) end, 10000)
+
+    return DoesUnitExist(unitTag) and validPets[lang][unitName]
 end
 
 local function GetKeyWithData(unitTag)
@@ -215,9 +217,9 @@ local function SetPetWindowHidden(hidden, combatState)
     if combatState then
         setToHidden = true
     end
-    PetHealth.PET_BAR_FRAGMENT:SetHiddenForReason("NoPetOrOnlyInCombat", setToHidden)
+    PET_BAR_FRAGMENT:SetHiddenForReason("NoPetOrOnlyInCombat", setToHidden)
     -- debug
-    --d(string.format("SetPetWindowHidden() setToHidden: %s, onlyInCombat: %s", tos(setToHidden), tos(onlyInCombat)))
+    --ChatOutput(string.format("SetPetWindowHidden() setToHidden: %s, onlyInCombat: %s", tos(setToHidden), tos(onlyInCombat)))
 end
 
 local function PetUnSummonedAlerts(unitTag)
@@ -255,7 +257,7 @@ local function RefreshPetWindow()
     -- d(GetAbilityName(23319))
     local countPets   = GetTableSize(currentPets)
     local combatState = GetCombatState()
-    if PetHealth.PET_BAR_FRAGMENT:IsHidden() and countPets == 0 and combatState then
+    if PET_BAR_FRAGMENT:IsHidden() and countPets == 0 and combatState then
         return
     end
 
@@ -294,7 +296,7 @@ local function RefreshPetWindow()
     -- set hidden state
     SetPetWindowHidden(setToHidden, combatState)
     -- debug
-    --d(string.format("RefreshPetWindow() countPets: %d", countPets))
+    --ChatOutput(string.format("RefreshPetWindow() countPets: %d", countPets))
 end
 
 ------------
@@ -356,7 +358,7 @@ local function OnShieldUpdate(handler, unitTag, value, maxValue, initial, doDebu
 end
 
 local function GetShield(unitTag, doDebug)
-    local value, maxValue = GetUnitAttributeVisualizerEffectInfo(unitTag, ATTRIBUTE_VISUAL_POWER_SHIELDING, STAT_MITIGATION, ATTRIBUTE_HEALTH, COMBAT_MECHANIC_FLAGS_HEALTH)
+    local value, maxValue = GetUnitAttributeVisualizerEffectInfo(unitTag, ATTRIBUTE_VISUAL_POWER_SHIELDING, STAT_MITIGATION, ATTRIBUTE_HEALTH, POWERTYPE_HEALTH)
     if value == nil then
         value    = 0
         maxValue = 0
@@ -388,7 +390,6 @@ local function OnHealthUpdate(_, unitTag, _, _, powerValue, powerMax, initial, d
         if not onScreenHealthAlerts then
             OnScreenMessage(zo_strformat("|cff0000<<1>> <<2>>|r", petName, GetString(SI_PET_HEALTH_LOW_HEALTH_WARNING_MSG)))
             onScreenHealthAlerts = true
-
         end
     else
         onScreenHealthAlerts = false
@@ -408,7 +409,7 @@ local function OnHealthUpdate(_, unitTag, _, _, powerValue, powerMax, initial, d
 end
 
 local function GetHealth(unitTag, doDebug)
-    local powerValue, powerMax = GetUnitPower(unitTag, COMBAT_MECHANIC_FLAGS_HEALTH)
+    local powerValue, powerMax = GetUnitPower(unitTag, POWERTYPE_HEALTH)
     if doDebug then d("[PetHealth]GetHealth - health: " ..tos(powerValue) .. "/" .. tos(powerMax)) end
     OnHealthUpdate(_, unitTag, _, _, powerValue, powerMax, "true", doDebug)
 end
@@ -444,7 +445,7 @@ local function UpdatePetStats(unitTag)
     GetHealth(unitTag, doDebug)
     GetShield(unitTag, doDebug)
     -- debug
-    --d(string.format("UpdatePetStats() unitTag: %s, name: %s", unitTag, name))
+    --ChatOutput(string.format("UpdatePetStats() unitTag: %s, name: %s", unitTag, name))
 end
 
 local function GetActivePets()
@@ -479,7 +480,7 @@ local function OnPlayerCombatState(_, inCombat)
 
     inCombatAddon = inCombat
     -- debug
-    --d(string.format("OnPlayerCombatState() inCombat: %s, inCombatAddon: %s", tos(inCombat), tos(inCombatAddon)))
+    --ChatOutput(string.format("OnPlayerCombatState() inCombat: %s, inCombatAddon: %s", tos(inCombat), tos(inCombatAddon)))
     -- refresh
     RefreshPetWindow()
 end
@@ -505,7 +506,7 @@ local function CreateWarner()
                 self:OnHealthUpdate(health, maxHealth)
             end
             local function OnPlayerActivated()
-                local current, max = GetUnitPower(self.unitTag, COMBAT_MECHANIC_FLAGS_HEALTH)
+                local current, max = GetUnitPower(self.unitTag, POWERTYPE_HEALTH)
                 self:OnHealthUpdate(current, max)
             end
 
@@ -524,7 +525,7 @@ local function CreateWarner()
                         self.warnAnimation:Stop()
                     end
                 else
-                    local current, max = GetUnitPower(UNIT_PLAYER_TAG, COMBAT_MECHANIC_FLAGS_HEALTH)
+                    local current, max = GetUnitPower(UNIT_PLAYER_TAG, POWERTYPE_HEALTH)
                     self.warning:SetAlpha(0)
                     self:UpdateAlphaPulse(current / max)
                 end
@@ -575,24 +576,21 @@ local function CreateControls()
     ---------------
     base = WINDOW_MANAGER:CreateTopLevelWindow(addon.name .. "_TopLevel")
     base:SetDimensions(WINDOW_WIDTH, WINDOW_HEIGHT_BASE)
-    base:SetAnchor(default.point, GuiRoot, default.relPoint, savedVars.x, savedVars.y)
-   --base:SetMouseEnabled(true)
-  --  if savedVars.lockWindow == true then
-    --    base:SetMovable(false)
-   -- else
-    --    base:SetMovable(true)
-   -- end
+    base:SetAnchor(savedVars.point, GuiRoot, savedVars.relPoint, savedVars.x, savedVars.y)
+    base:SetMouseEnabled(true)
+    if savedVars.lockWindow == true then
+        base:SetMovable(false)
+    else
+        base:SetMovable(true)
+    end
     base:SetDrawLayer(DL_OVERLAY)
     base:SetDrawLevel(0)
-    --base:SetHandler("OnMouseUp", function()
-        --local a, b
-        --a, savedVars.point, b, savedVars.relPoint, savedVars.x, savedVars.y = base:GetAnchor(0)
-    --end)
+    base:SetHandler("OnMouseUp", function()
+        local a, b
+        a, savedVars.point, b, savedVars.relPoint, savedVars.x, savedVars.y = base:GetAnchor(0)
+    end)
     base:SetHidden(true)
-	function PetHealth.MovePetWindow()
-		base:ClearAnchors()
-		base:SetAnchor(default.point, GuiRoot, default.relPoint, savedVars.x, savedVars.y)
-	end
+
     ----------------
     -- BACKGROUND --
     ----------------
@@ -692,7 +690,7 @@ local function CreateControls()
         end
 
         local PAB_TEMPLATES = {
-            [COMBAT_MECHANIC_FLAGS_HEALTH]   = {
+            [POWERTYPE_HEALTH]   = {
                 background = {
                     Left   = "ZO_PlayerAttributeBgLeftArrow",
                     Right  = "ZO_PlayerAttributeBgRightArrow",
@@ -781,7 +779,7 @@ local function CreateControls()
             currentPetWindow.barright    = currentPetWindow:GetNamedChild("BarRight")
 
             currentPetWindow.barControls = { currentPetWindow.barleft, currentPetWindow.barright }
-            currentPetWindow.powerType   = COMBAT_MECHANIC_FLAGS_HEALTH
+            currentPetWindow.powerType   = POWERTYPE_HEALTH
 
             SetColors(currentPetWindow)
             ApplyStyle(currentPetWindow)
@@ -814,10 +812,10 @@ local function CreateControls()
     -----------
     -- SCENE --
     -----------
-    PetHealth.PET_BAR_FRAGMENT = ZO_HUDFadeSceneFragment:New(base)
-    HUD_SCENE:AddFragment(PetHealth.PET_BAR_FRAGMENT)
-    HUD_UI_SCENE:AddFragment(PetHealth.PET_BAR_FRAGMENT)
-    PetHealth.PET_BAR_FRAGMENT:SetHiddenForReason("NoPetOrOnlyInCombat", true)
+    PET_BAR_FRAGMENT = ZO_HUDFadeSceneFragment:New(base)
+    HUD_SCENE:AddFragment(PET_BAR_FRAGMENT)
+    HUD_UI_SCENE:AddFragment(PET_BAR_FRAGMENT)
+    PET_BAR_FRAGMENT:SetHiddenForReason("NoPetOrOnlyInCombat", true)
 end
 
 local function OnUnitDestroyed(eventCode, unitTag)
@@ -833,7 +831,7 @@ local function OnUnitDestroyed(eventCode, unitTag)
     if key ~= nil then
         trem(currentPets, key)
         -- debug
-        --d(string.format("%s destroyed", unitTag))
+        --ChatOutput(string.format("%s destroyed", unitTag))
         -- refresh
         local countPets = GetTableSize(currentPets)
         if countPets > 0 then
@@ -1021,7 +1019,6 @@ function PetHealth.onlyInCombatHealthPercentage(toValue)
 end
 
 local function SlashCommands()
-
 	local function slash_pethealthdebug()
 	 	savedVars.debug = not savedVars.debug
      	savedVars.debug = savedVars.debug
@@ -1145,6 +1142,7 @@ local function SlashCommands()
 		LSC:Register("/pethealthwarnshield", function(shieldValuePercent) slash_pethealthwarnshield(shieldValuePercent) end, GetString(SI_PET_HEALTH_LSC_WARN_SHIELD))
 		LSC:Register("/pethealthcombathealth", function(combatHealthValuePercent) slash_pethealthcombathealth(combatHealthValuePercent) end, GetString(SI_PET_HEALTH_LSC_COMBAT_HEALTH))
 	else
+	--  SLASH_COMMANDS["/pethealthdebug"]=function() slash_pethealthdebug() end
 		SLASH_COMMANDS["/pethealthcombat"]=function() slash_pethealthcombat() end
 		SLASH_COMMANDS["/pethealthhideindungeon"]=function() slash_pethealthhideindungeon() end
 		SLASH_COMMANDS["/pethealthvalues"]=function() slash_pethealthvalues() end
@@ -1186,7 +1184,7 @@ local function OnAddOnLoaded(_, addonName)
     local supportedClass         = supportedClasses[getUnitClassId] or savedVars.showCompanion
     if not supportedClass then
         -- debug
-        d("[PetHealth] " .. GetString(SI_PET_HEALTH_CLASS))
+        ChatOutput("[PetHealth] " .. GetString(SI_PET_HEALTH_CLASS))
         return
     end
 
@@ -1203,9 +1201,10 @@ local function OnAddOnLoaded(_, addonName)
         PetHealth.buildLAMAddonMenu()
     end
 
-
-    --Build the slash commands with base game Slash unless if the library LibSlashCommander was found loaded properly
+    
+    --Build the slash commands if the library LibSlashCommander was found loaded properly
     SlashCommands()
+    
 
     -- create ui
     CreateWarner()
@@ -1215,7 +1214,7 @@ local function OnAddOnLoaded(_, addonName)
     LoadEvents()
 
     -- debug
-    --d("loaded")
+    --ChatOutput("loaded")
 end
 
 EVENT_MANAGER:RegisterForEvent(addon.name, EVENT_ADD_ON_LOADED, OnAddOnLoaded)
