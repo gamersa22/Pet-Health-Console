@@ -15,8 +15,8 @@ end
 PetHealth.updateExcludedZonesForHide = updateExcludedZonesForHide
 
 function PetHealth.buildLHASAddonMenu()
-    local settings = PetHealth.savedVars
-    if not PetHealth.LHAS or not settings then return false end
+   -- local settings = PetHealth.GetSavedVars()
+    if not PetHealth.LHAS or not PetHealth.GetSavedVars() then return false end
 
     local defaults = PetHealth.savedVarsDefault
     local addonVars = PetHealth.addonData
@@ -71,12 +71,15 @@ function PetHealth.buildLHASAddonMenu()
 			label = GetString(SI_PET_HEALTH_SAVE_TYPE),
 			tooltip = GetString(SI_PET_HEALTH_SAVE_TYPE_TT).."\n |ce00000"..GetString(SI_PET_HEALTH_LAM_RELOADUI_WARNING),
 			items = savedVariablesOptions,
-			getFunction = function() return savedVariablesOptions[settings.saveMode].name end,
+			getFunction = function() return savedVariablesOptions[PetHealth.saveMode].name end,
 			setFunction = function(control, itemName, itemData) 
-				settings.saveMode = itemData.data
-				if notDefaultsFun then ReloadUI() end
+				if itemName == "default" then return end -- skip the default reset so we stay on the setting we want to reset
+				if PetHealth.saveMode ~= itemData.data then
+					PetHealth.saveMode = itemData.data
+					PetHealth.saveTypeChanged()				
+				end
 			end,
-			default = savedVariablesOptions[defaults.saveMode].name
+			default = "default"
 		},	
         --==============================================================================
         {
@@ -102,9 +105,9 @@ function PetHealth.buildLHASAddonMenu()
 			label = "Left <- -> Right",
 			tooltip = "move it left or right",
 			min = -30, max = maxX, step = 5,
-			getFunction = function() return settings.x end,
+			getFunction = function() return PetHealth.GetSavedVars().x end,
 			setFunction = function(value) 
-				settings.x = value
+				PetHealth.GetSavedVars().x = value
                PetHealth.MovePetWindow()
 			end,
 			default = defaults.x
@@ -114,9 +117,9 @@ function PetHealth.buildLHASAddonMenu()
 			label = "Up <- -> Down",
 			tooltip = "move it up or down",
 			min = -30, max = maxY, step = 5,
-			getFunction = function() return settings.y end,
+			getFunction = function() return PetHealth.GetSavedVars().y end,
 			setFunction = function(value) 
-				settings.y = value
+				PetHealth.GetSavedVars().y = value
                PetHealth.MovePetWindow()
 			end,
 			default = defaults.y
@@ -125,9 +128,9 @@ function PetHealth.buildLHASAddonMenu()
 			type = PetHealth.LHAS.ST_CHECKBOX,
 			label = GetString(SI_PET_HEALTH_LAM_LABELS),
             tooltip = GetString(SI_PET_HEALTH_LAM_LABELS_TT),
-			getFunction = function() return settings.showLabels end,
+			getFunction = function() return PetHealth.GetSavedVars().showLabels end,
 			setFunction = function(value) 
-				settings.showLabels = value
+				PetHealth.GetSavedVars().showLabels = value
                 PetHealth.changeLabels(value) 
 			end,
 			default = defaults.showLabels,
@@ -136,9 +139,9 @@ function PetHealth.buildLHASAddonMenu()
 			type = PetHealth.LHAS.ST_CHECKBOX,
 			label =  GetString(SI_PET_HEALTH_LAM_VALUES),
             tooltip = GetString(SI_PET_HEALTH_LAM_VALUES_TT),
-			getFunction = function() return settings.showValues end,
+			getFunction = function() return PetHealth.GetSavedVars().showValues end,
 			setFunction = function(value) 
-				settings.showValues = value
+				PetHealth.GetSavedVars().showValues = value
                 PetHealth.changeValues(value) 
 			end,
 			default = defaults.showValues,
@@ -147,9 +150,9 @@ function PetHealth.buildLHASAddonMenu()
 			type = PetHealth.LHAS.ST_CHECKBOX,
 			label = GetString(SI_PET_HEALTH_LAM_UNSUMMONED_ALERT),
             tooltip = GetString(SI_PET_HEALTH_LAM_UNSUMMONED_ALERT_TT),
-			getFunction = function() return settings.petUnsummonedAlerts end,
+			getFunction = function() return PetHealth.GetSavedVars().petUnsummonedAlerts end,
 			setFunction = function(value) 
-				settings.petUnsummonedAlerts = value
+				PetHealth.GetSavedVars().petUnsummonedAlerts = value
                 PetHealth.unsummonedAlerts(value) 
 			end,
 			default = defaults.petUnsummonedAlerts,
@@ -158,11 +161,10 @@ function PetHealth.buildLHASAddonMenu()
 			type = PetHealth.LHAS.ST_CHECKBOX,
 			label = GetString(SI_PET_HEALTH_LAM_USE_ZOS_STYLE),
             tooltip = GetString(SI_PET_HEALTH_LAM_USE_ZOS_STYLE_TT),
-			getFunction = function() return settings.useZosStyle end,
+			getFunction = function() return PetHealth.GetSavedVars().useZosStyle end,
 			setFunction = function(value) 
-				settings.useZosStyle = value
-                settings.showBackground = not value
-                PetHealth.changeBackground(not value)
+				PetHealth.GetSavedVars().useZosStyle = value
+                PetHealth.changeBackground(PetHealth.GetSavedVars().showBackground)
 				PetHealth.frameStyleChanged()
 			end,
 			default = defaults.useZosStyle,
@@ -171,12 +173,12 @@ function PetHealth.buildLHASAddonMenu()
 			type = PetHealth.LHAS.ST_CHECKBOX,
 			label = GetString(SI_PET_HEALTH_LAM_BACKGROUND),
             tooltip = GetString(SI_PET_HEALTH_LAM_BACKGROUND_TT),
-			getFunction = function() return settings.showBackground end,
+			getFunction = function() return PetHealth.GetSavedVars().showBackground end,
 			setFunction = function(value) 
-				settings.showBackground = value
+				PetHealth.GetSavedVars().showBackground = value
                 PetHealth.changeBackground(value) 
 			end,
-			disable = function() return  settings.useZosStyle end, 
+			disable = function() return  PetHealth.GetSavedVars().useZosStyle end, 
 			default = defaults.showBackground,
 		},
 		{
@@ -184,9 +186,9 @@ function PetHealth.buildLHASAddonMenu()
 			label = GetString(SI_PET_HEALTH_LAM_LOW_HEALTH_WARN),
             tooltip = GetString(SI_PET_HEALTH_LAM_LOW_HEALTH_WARN_TT),
 			min = 0, max = 99, step = 1,
-			getFunction = function() return settings.lowHealthAlertSlider end,
+			getFunction = function() return PetHealth.GetSavedVars().lowHealthAlertSlider end,
 			setFunction = function(value) 
-				settings.lowHealthAlertSlider = value
+				PetHealth.GetSavedVars().lowHealthAlertSlider = value
                 PetHealth.lowHealthAlertPercentage(value)
 			end,
 			default = defaults.lowHealthAlertSlider
@@ -196,9 +198,9 @@ function PetHealth.buildLHASAddonMenu()
 			label = GetString(SI_PET_HEALTH_LAM_LOW_SHIELD_WARN),
             tooltip = GetString(SI_PET_HEALTH_LAM_LOW_SHIELD_WARN_TT),
 			min = 0, max = 99, step = 1,
-			getFunction = function() return settings.lowShieldAlertSlider end,
+			getFunction = function() return PetHealth.GetSavedVars().lowShieldAlertSlider end,
 			setFunction = function(value) 
-				settings.lowShieldAlertSlider = value
+				PetHealth.GetSavedVars().lowShieldAlertSlider = value
                 PetHealth.lowShieldAlertPercentage(value)
 			end,
 			default = defaults.lowShieldAlertSlider
@@ -206,26 +208,26 @@ function PetHealth.buildLHASAddonMenu()
 		{
 			type = PetHealth.LHAS.ST_COLOR,
 			label = "low Health Alert Color",
-			tooltip = function() return zo_strformat("|c"..settings.lowHealthAlertColor.."<<1>> <<2>>|r", "PET NAME", GetString(SI_PET_HEALTH_LOW_HEALTH_WARNING_MSG)) end,
-			getFunction = function() return ZO_ColorDef:New(settings.lowHealthAlertColor):UnpackRGBA() end,
-			setFunction = function(r, g, b, a) settings.lowHealthAlertColor = ZO_ColorDef:New(r, g, b):ToHex() end,
+			tooltip = function() return zo_strformat("|c"..PetHealth.GetSavedVars().lowHealthAlertColor.."<<1>> <<2>>|r", "PET NAME", GetString(SI_PET_HEALTH_LOW_HEALTH_WARNING_MSG)) end,
+			getFunction = function() return ZO_ColorDef:New(PetHealth.GetSavedVars().lowHealthAlertColor):UnpackRGBA() end,
+			setFunction = function(r, g, b, a) PetHealth.GetSavedVars().lowHealthAlertColor = ZO_ColorDef:New(r, g, b):ToHex() end,
 			default = {ZO_ColorDef:New(defaults.lowHealthAlertColor):UnpackRGBA()},
 		},
 		{
 			type = PetHealth.LHAS.ST_COLOR,
 			label = "low Shield Alert Color",
-			tooltip = function() return zo_strformat("|c"..settings.lowShieldAlertColor.."<<1>>\'s <<2>>|r", "PET NAME", GetString(SI_PET_HEALTH_LOW_SHIELD_WARNING_MSG)) end,
-			getFunction = function() return ZO_ColorDef:New(settings.lowShieldAlertColor):UnpackRGBA() end,
-			setFunction = function(r, g, b, a) settings.lowShieldAlertColor = ZO_ColorDef:New(r, g, b):ToHex() end,
+			tooltip = function() return zo_strformat("|c"..PetHealth.GetSavedVars().lowShieldAlertColor.."<<1>>\'s <<2>>|r", "PET NAME", GetString(SI_PET_HEALTH_LOW_SHIELD_WARNING_MSG)) end,
+			getFunction = function() return ZO_ColorDef:New(PetHealth.GetSavedVars().lowShieldAlertColor):UnpackRGBA() end,
+			setFunction = function(r, g, b, a) PetHealth.GetSavedVars().lowShieldAlertColor = ZO_ColorDef:New(r, g, b):ToHex() end,
 			default = {ZO_ColorDef:New(defaults.lowShieldAlertColor):UnpackRGBA()},
 		},
 		{
 			type = PetHealth.LHAS.ST_CHECKBOX,
 			label = GetString(SI_PET_HEALTH_LAM_COMPANION),
             tooltip = GetString(SI_PET_HEALTH_LAM_COMPANION_TT),
-			getFunction = function() return settings.showCompanion end,
+			getFunction = function() return PetHealth.GetSavedVars().showCompanion end,
 			setFunction = function(value) 
-				settings.showCompanion = value
+				PetHealth.GetSavedVars().showCompanion = value
                 PetHealth.changeCompanion(value)
 			end,
 			default = defaults.showCompanion,
@@ -239,9 +241,9 @@ function PetHealth.buildLHASAddonMenu()
 			type = PetHealth.LHAS.ST_CHECKBOX,
 			label = GetString(SI_PET_HEALTH_LAM_HIDE_IN_DUNGEON),
             tooltip = GetString(SI_PET_HEALTH_LAM_HIDE_IN_DUNGEON_TT),
-			getFunction = function() return settings.hideInDungeon end,
+			getFunction = function() return PetHealth.GetSavedVars().hideInDungeon end,
 			setFunction = function(value) 
-				settings.hideInDungeon = value
+				PetHealth.GetSavedVars().hideInDungeon = value
                 PetHealth.hideInDungeon(value)
 			end,
 			default = defaults.hideInDungeon,
@@ -250,9 +252,9 @@ function PetHealth.buildLHASAddonMenu()
 			type = PetHealth.LHAS.ST_CHECKBOX,
 			label = GetString(SI_PET_HEALTH_LAM_ONLY_IN_COMBAT),
             tooltip = GetString(SI_PET_HEALTH_LAM_ONLY_IN_COMBAT_TT),
-			getFunction = function() return settings.onlyInCombat end,
+			getFunction = function() return PetHealth.GetSavedVars().onlyInCombat end,
 			setFunction = function(value) 
-				settings.onlyInCombat = value
+				PetHealth.GetSavedVars().onlyInCombat = value
                 PetHealth.changeCombatState()
 			end,
 			default = defaults.onlyInCombat,
@@ -262,11 +264,12 @@ function PetHealth.buildLHASAddonMenu()
 			label = GetString(SI_PET_HEALTH_LAM_ONLY_IN_COMBAT_HEALTH),
             tooltip = GetString(SI_PET_HEALTH_LAM_ONLY_IN_COMBAT_HEALTH_TT),
 			min = 0, max = 99, step = 1,
-			getFunction = function() return settings.onlyInCombatHealthSlider end,
+			getFunction = function() return PetHealth.GetSavedVars().onlyInCombatHealthSlider end,
 			setFunction = function(value) 
-				settings.onlyInCombatHealthSlider = value
+				PetHealth.GetSavedVars().onlyInCombatHealthSlider = value
                 PetHealth.onlyInCombatHealthPercentage(value)
 			end,
+			disable = function() return not PetHealth.GetSavedVars().onlyInCombat end, 
 			default = defaults.onlyInCombatHealthSlider
 		},  
 		{
