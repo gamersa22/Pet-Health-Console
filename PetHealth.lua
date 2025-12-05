@@ -18,13 +18,13 @@ local addon                        = {
     version         = "1.15",
     savedVarName    = "PetHealth_Save",
     savedVarVersion = 2,
-    lhasDisplayName  = "PetHealth",
-    lhasAuthor       = "Scootworks, Goobsnake, Baertram, Gamer_sa22",
-    lhasUrl          = "https://www.esoui.com/downloads/info1884-PetHealth.html",
+    lamDisplayName  = "PetHealth",
+    lamAuthor       = "Scootworks, Goobsnake, Baertram, Gamer_sa22",
+    lamUrl          = "https://www.esoui.com/downloads/info1884-PetHealth.html",
 }
 PetHealth.addonData                = addon
 
-local defaultCharacter       = {
+local default      = {
     saveMode                 = 1, -- Default for each character setting
     point                    = 0, -- 0 as we want it to be based off top left
     relPoint                 = 0, -- ^^^
@@ -35,6 +35,7 @@ local defaultCharacter       = {
     showValues               = true,
     showLabels               = true,
     hideInDungeon            = false,
+	lockWindow             = false, -- Pervent mouse from moving it on pc
     lowHealthAlertSlider     = 0,
 	lowHealthAlertColor		 = "ff0000", --HexVaule for color
     lowShieldAlertSlider     = 0,	
@@ -50,9 +51,6 @@ local defaultCharacter       = {
             text      = "Maelstrom Arena"
         },
     }
-}
-local defaultAccount = {
-	["accountWideProfile"] = defaultCharacter,
 }
 local characterSavedVars, accountSavedVars
 
@@ -101,7 +99,7 @@ local function GetSavedVars()--gets the correct save data depending the saveMode
 	if characterSavedVars.saveMode == 1 then
 		return characterSavedVars
 	else
-		return accountSavedVars.accountWideProfile
+		return accountSavedVars
 	end
 end
 function PetHealth.GetSavedVars() return GetSavedVars() end -- for use in setting file
@@ -342,10 +340,9 @@ local function OnShieldUpdate(handler, unitTag, value, maxValue, initial, doDebu
     end
     if maxValue > 0 then
 		isShieldActive = false 
+		 maxValue = currentPets[i].unitMaxHp
         if doDebug then d("[PetHealth]OnShieldUpdate - unitTag: " .. tos(unitTag) ..", value: " .. tos(value) ..", maxValue: " .. tos(maxValue)) end
         if GetSavedVars().useZosStyle then
-            value    = value /2
-            maxValue = maxValue/2
             ZO_StatusBar_SmoothTransition(currentPetWindow.shieldleft, value, maxValue, (initial == "true" and true or false))
 			ZO_StatusBar_SmoothTransition(currentPetWindow.shieldright, value, maxValue, (initial == "true" and true or false))
         else
@@ -463,7 +460,8 @@ local function GetActivePets()
     for i = 1, MAX_PET_UNIT_TAGS do
         local unitTag = UNIT_PLAYER_PET .. i
         if IsUnitValidPet(unitTag) then
-            tins(currentPets, { unitTag = unitTag, unitName = zo_strformat("<<z:1>>", GetUnitName(unitTag)) })
+			local _,maxPetHp = GetUnitPower(unitTag,COMBAT_MECHANIC_FLAGS_HEALTH)
+            tins(currentPets, { unitTag = unitTag, unitName = zo_strformat("<<z:1>>", GetUnitName(unitTag)),unitMaxHp = maxPetHp })
             UpdatePetStats(unitTag)
         end
     end
@@ -569,7 +567,7 @@ local petHealthControlNameCounter = 0
 
 function PetHealth.MovePetWindow()
 	base:ClearAnchors()
-	base:SetAnchor(defaultCharacter.point, GuiRoot, defaultCharacter.relPoint, GetSavedVars().x, GetSavedVars().y)
+	base:SetAnchor(default.point, GuiRoot, default.relPoint, GetSavedVars().x, GetSavedVars().y)
 end
 
 local function CreateControls()
@@ -589,9 +587,32 @@ local function CreateControls()
     ---------------
     base = WINDOW_MANAGER:CreateTopLevelWindow(addon.name .. "_TopLevel")
     base:SetDimensions(WINDOW_WIDTH, WINDOW_HEIGHT_BASE)
-    base:SetAnchor(defaultCharacter.point, GuiRoot, defaultCharacter.relPoint, GetSavedVars().x, GetSavedVars().y)
+    base:SetAnchor(default.point, GuiRoot, default.relPoint, GetSavedVars().x, GetSavedVars().y)
+	base:SetMouseEnabled(true)
+	base:SetMovable(not GetSavedVars().lockWindow)	 
     base:SetDrawLayer(DL_OVERLAY)
     base:SetDrawLevel(0)
+	base:SetHandler("OnMouseUp", function()
+        local isValidAnchor, point, relativeTo, relativePoint, offsetX, offsetY = base:GetAnchor(0)
+		local maxX, maxY = GuiRoot:GetDimensions()
+			maxX = math.floor(maxX)
+			maxY = math.floor(maxY)
+		if point == 3 then 
+			GetSavedVars().x = offsetX
+			GetSavedVars().y = offsetY
+		elseif point == 6 then 
+			GetSavedVars().x = offsetX
+			GetSavedVars().y = (maxY - base:GetHeight()) + offsetY
+		elseif point == 9 then 
+			GetSavedVars().x = (maxX - base:GetWidth()) + offsetX 
+			GetSavedVars().y = offsetY
+		elseif point == 12 then 
+			GetSavedVars().x = (maxX - base:GetWidth()) + offsetX
+			GetSavedVars().y = (maxY - base:GetHeight()) + offsetY
+		end
+		--GetSavedVars().x =
+		--GetSavedVars().y 
+    end)
     base:SetHidden(true)
     ----------------
     -- BACKGROUND --
@@ -609,8 +630,11 @@ local function CreateControls()
     ctrl:SetEdgeColor(1, 1, 1, 0.8)
     ctrl:SetDimensions(baseWidth, baseHeight)
     ctrl:SetAnchor(TOPLEFT)
-    ctrl:SetAlpha(GetAlphaFromControl(GetSavedVars().showBackground))
-
+	if GetSavedVars().useZosStyle then 
+		ctrl:SetAlpha(GetAlphaFromControl(false))
+	else
+		ctrl:SetAlpha(GetAlphaFromControl(GetSavedVars().showBackground))
+	end
     --------------
     -- PET BARS --
     --------------
@@ -812,7 +836,7 @@ local function CreateControls()
 			else
 				currentPetWindow:SetAnchor(TOP, windowZos[i - 1], BOTTOM, 0, 20)
 			end
-			--currentPetWindow:SetHidden(not GetSavedVars().useZosStyle)
+			currentPetWindow:SetHidden(not GetSavedVars().useZosStyle)
 		end
 	end
     
@@ -985,6 +1009,10 @@ function PetHealth.hideInDungeon(toValue)
     RefreshPetWindow()
 end
 
+function PetHealth.lockPetWindow(toValue)
+    lockWindow = toValue
+end
+
 function PetHealth.changeBackground(toValue)
     background:SetAlpha(GetAlphaFromControl(toValue))
 end
@@ -1023,22 +1051,23 @@ function PetHealth.onlyInCombatHealthPercentage(toValue)
 end
 
 function PetHealth.frameStyleChanged()
+	local saveVar = GetSavedVars()
 	-- We only make 1 style of frame on startup as to reduce load
 	-- as we are swaping we make it here
 	if windowZos[1] == nil then PetHealth.createZosFrames() end
 	if window[1] == nil then PetHealth.createNormalFrames() end
 	-- swap what frames are shown
 	for i = 1,  GetTableSize(currentPets) do
-        windowZos[i]:SetHidden(not GetSavedVars().useZosStyle)
-		window[i]:SetHidden(GetSavedVars().useZosStyle)
+        windowZos[i]:SetHidden(not saveVar.useZosStyle)
+		window[i]:SetHidden(saveVar.useZosStyle)
     end
 	-- update the vaules and names if they should show used by the save type swap
 	for i = 1, MAX_PET_UNIT_TAGS do
-        GetCurrentWidow(i).values:SetAlpha(GetAlphaFromControl(PetHealth.GetSavedVars().showValues))
-		GetCurrentWidow(i).label:SetAlpha(GetAlphaFromControl(GetSavedVars().showLabels))
+        GetCurrentWidow(i).values:SetAlpha(GetAlphaFromControl(saveVar.showValues))
+		GetCurrentWidow(i).label:SetAlpha(GetAlphaFromControl(saveVar.showLabels))
     end
 	-- hide the background if were on the zos style
-	if GetSavedVars().useZosStyle then background:SetAlpha(GetAlphaFromControl(false)) end
+	if saveVar.useZosStyle then background:SetAlpha(GetAlphaFromControl(false)) else PetHealth.changeBackground(saveVar.showBackground)	 end
 	-- updates all the pet bars
 	GetActivePets()
 end
@@ -1060,9 +1089,9 @@ end
 local function SlashCommands()
 
 	local function slash_pethealthdebug()
-	 	GetSavedVars().debug = not GetSavedVars().debug
-     	GetSavedVars().debug = GetSavedVars().debug
-     	if GetSavedVars().debug then
+	 	GetSavedVars().doDebug = not GetSavedVars().doDebug
+     	GetSavedVars().doDebug = GetSavedVars().doDebug
+     	if GetSavedVars().doDebug then
      		d(string.format("%s %s!", GetString(SI_SETTINGSYSTEMPANEL6), GetString(SI_ADDONLOADSTATE2)))
      	else
      		d(string.format("%s %s!", GetString(SI_SETTINGSYSTEMPANEL6), GetString(SI_ADDONLOADSTATE3)))
@@ -1195,7 +1224,7 @@ local function SlashCommands()
 		SLASH_COMMANDS["/pethealthcombathealth"]=function(combatHealthValuePercent) slash_pethealthcombathealth(combatHealthValuePercent) end	
 	end
 	SLASH_COMMANDS["/pethealthcolorhealth"]=function(healthColorValue) 
-		if healthColorValue == nil or healthColorValue == "" then d("Enter hex code e.g "..defaultCharacter.lowHealthAlertColor)
+		if healthColorValue == nil or healthColorValue == "" then d("Enter hex code e.g "..default.lowHealthAlertColor)
 		else 
 			d("|c"..GetSavedVars().lowHealthAlertColor.." Changed from: "..GetSavedVars().lowHealthAlertColor)
 			GetSavedVars().lowHealthAlertColor = healthColorValue
@@ -1203,7 +1232,7 @@ local function SlashCommands()
 		end
 	end
 	SLASH_COMMANDS["/pethealthcolorshield"]=function(shieldColorValue) 
-		if shieldColorValue == nil or shieldColorValue == "" then d("Enter hex code e.g "..defaultCharacter.lowShieldAlertColor)
+		if shieldColorValue == nil or shieldColorValue == "" then d("Enter hex code e.g "..default.lowShieldAlertColor)
 		else 
 			d("|c"..GetSavedVars().lowShieldAlertColor.." Changed from: "..GetSavedVars().lowShieldAlertColor)
 			GetSavedVars().lowShieldAlertColor = shieldColorValue
@@ -1215,11 +1244,11 @@ end
 local function OnAddOnLoaded(_, addonName)
     if addonName ~= addon.name then return end
     EVENT_MANAGER:UnregisterForEvent(addon.name, EVENT_ADD_ON_LOADED)
-	accountSavedVars = ZO_SavedVars:NewAccountWide(addon.savedVarName, addon.savedVarVersion, nil, defaultAccount, GetWorldName())
-	characterSavedVars = ZO_SavedVars:NewCharacterIdSettings(addon.savedVarName, addon.savedVarVersion, nil, defaultCharacter,GetWorldName()) 	
+	accountSavedVars = ZO_SavedVars:NewAccountWide(addon.savedVarName, addon.savedVarVersion, nil, default, GetWorldName())
+	characterSavedVars = ZO_SavedVars:NewCharacterIdSettings(addon.savedVarName, addon.savedVarVersion, nil, default,GetWorldName()) 	
 	--lastSaveType = GetSavedVars().saveMode
 	PetHealth.saveMode = characterSavedVars.saveMode
-    PetHealth.savedVarsDefault   = defaultCharacter
+    PetHealth.savedVarsDefault   = default
     updateStaticVars()
 
     -- Addon is only enabled for the classIds which are given with the value true in the table PetHealth.supportedClasses
@@ -1236,14 +1265,10 @@ local function OnAddOnLoaded(_, addonName)
 
     --Makes libs completely optional
     --If users want to change default values or expanded funcitonality, they will need to install applicable libs
-    LHAS = LibHarvensAddonSettings 
     LSC = LibSlashCommander
 
-    if LHAS then
         --Build the LHAS addon menu if the library LibHarvensAddonSettings was found loaded properly
-        PetHealth.LHAS = LHAS
-        PetHealth.buildLHASAddonMenu()
-    end
+    PetHealth.buildAddonMenu()
 
 
     --Build the slash commands with base game Slash unless if the library LibSlashCommander was found loaded properly
